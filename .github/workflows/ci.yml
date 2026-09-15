@@ -43,6 +43,7 @@ jobs:
   test:
     name: Servis sınamaları (kasa)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     services:
       mariadb:
         image: mariadb:10.11
@@ -93,10 +94,21 @@ jobs:
       # suite used to hard-code that path, so on a runner they all died with
       # "executable doesn't exist" before their first assertion. The path is
       # gone now (test/tarayici.js); what is left is fetching the browser.
+      # --with-deps is gone deliberately. It runs apt-get under sudo, takes
+      # minutes, and the ubuntu-latest image already ships the libraries
+      # Chromium needs. If a library really is missing, the launch error in
+      # the artifact will name it - which is better than a silent ten minute
+      # step that might be the thing failing.
       - name: Install Chromium for the browser suites
         working-directory: pos-service
-        run: npx playwright install --with-deps chromium
+        run: |
+          set -o pipefail
+          npx playwright install chromium 2>&1 | tee -a /tmp/ci-adimlar.log
+          node -e "const {chromeYolu}=require('./test/tarayici');console.log('chrome:',chromeYolu()||'(playwright bundled)')" 2>&1 | tee -a /tmp/ci-adimlar.log
 
+      # Waiting quietly and carrying on regardless is how a panel that never
+      # came up turned into thirty confusing suite failures. If 8090 does not
+      # answer, say so here and stop.
       - name: Build the panel and serve it
         working-directory: pos-service
         env:
@@ -109,8 +121,16 @@ jobs:
             curl -sf -o /dev/null http://127.0.0.1:8090/ && break
             sleep 2
           done
-          curl -s -o /dev/null -w 'panel: %{http_code}\n' http://127.0.0.1:8090/
+          if ! curl -s -o /dev/null --max-time 5 http://127.0.0.1:8090/; then
+            echo "The panel never answered on 8090. Its own log:"
+            cat /tmp/panel.log || true
+            exit 1
+          fi
+          curl -s -o /dev/null -w 'panel: %{http_code}\n' http://127.0.0.1:8090/ | tee -a /tmp/ci-adimlar.log
 
+      # tee, so that whatever the bench says ends up in the artifact as well
+      # as in this log. Reading a failure should not require access to this
+      # page - the zip should be enough on its own.
       - name: Run the bench
         working-directory: pos-service
         env:
@@ -118,22 +138,30 @@ jobs:
           DB_USER: noktapp
           DB_PASS: nokpass
           NOKTAPP_DATA_DIR: /tmp/nokdata
-        run: bash test/run-all.sh
+        run: |
+          set -o pipefail
+          bash test/run-all.sh 2>&1 | tee /tmp/tezgah.log
 
-      - name: Keep the logs when it fails
-        if: failure()
+      # always(), not failure(): a step that dies before the bench used to
+      # produce no artifact at all, which left nothing to read.
+      - name: Keep the logs
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: sinama-gunlukleri
           path: |
-            /tmp/nokdata/logs
+            /tmp/tezgah.log
+            /tmp/ci-adimlar.log
             /tmp/panel.log
+            /tmp/nokdata/logs
             pos-service/test/shots
+          if-no-files-found: ignore
           retention-days: 7
 
   panel:
     name: Panel sınamaları (PHP)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # The panel is the other half of the product - the admin screens, the chain
     # menu, the reports, the diagnostics, the alerts. It is PHP with its own
     # suites under panel/tests/, and until now they only ever ran on one laptop.
@@ -196,14 +224,18 @@ jobs:
           DB_PORT: '3399'
           DB_USER: noktapp
           DB_PASS: nokpass
-        run: bash test/tumu.sh --panel-only
+        run: |
+          set -o pipefail
+          bash test/tumu.sh --panel-only 2>&1 | tee /tmp/panel-suites.log
 
-      - name: Keep the logs when it fails
-        if: failure()
+      - name: Keep the logs
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: panel-gunlukleri
           path: |
+            /tmp/panel-suites.log
             /tmp/panel.log
             panel/tests/shots
+          if-no-files-found: ignore
           retention-days: 7
