@@ -80,6 +80,24 @@ jobs:
 
       - run: npm ci --prefix pos-service --no-audit --no-fund
 
+      # The till's backup and restore shell out to `mariadb-dump` and
+      # `mariadb` BY NAME - the binaries that ship inside the installer next
+      # to the bundled server, which is what a customer's machine actually
+      # runs. The runner image carries MySQL's client instead, so every
+      # backup check came back "spawn mariadb-dump ENOENT", loyalty lost
+      # seventeen checks to a fixture that could not reach the shared
+      # registry, and geri - the suite that restores a database - could not
+      # start at all. Installing the real client is the honest fix: pointing
+      # the code at mysqldump would test a path no till has.
+      - name: MariaDB client tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mariadb-client
+          for b in mariadb mariadb-dump mysql; do
+            command -v "$b" >/dev/null || { echo "still missing: $b"; exit 1; }
+          done
+          mariadb-dump --version
+
       # The fixture drops and rebuilds nokpos_panel and nokpos_shared, and the
       # service container only grants its user rights on the one database it
       # was told to create. Without this the fixture's first statement comes
