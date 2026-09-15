@@ -8,8 +8,8 @@
  *   node panel/tests/shots.js            both, if :8095 is up
  *   node panel/tests/shots.js after      just the current panel
  */
-const { chromium } = require('playwright-core');
 const path = require('path');
+const { tarayiciAc } = require('../../pos-service/test/tarayici');
 
 const OUT = path.join(__dirname, 'shots');
 const ADMIN = process.env.PANEL_ADMIN || 'erik@noktapp.com';
@@ -73,7 +73,7 @@ async function shoot(browser, base, tag, ids, width = 1500) {
 
 (async () => {
   const only = process.argv[2];
-  const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+  const b = await tarayiciAc();
 
   // find a chain tenant (>=2 branches) and a single-shop one
   const mysql = require('child_process').execSync(

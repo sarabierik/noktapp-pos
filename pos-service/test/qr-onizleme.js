@@ -1,9 +1,9 @@
 'use strict';
 process.env.NOKTAPP_PORT = process.env.NOKTAPP_PORT || '7497';
 const fs = require('fs');
-const { chromium } = require('playwright-core');
 const db = require('../src/db');
 const { bootstrap } = require('../src/index');
+const { tarayiciAc } = require('./tarayici');
 const BASE = 'http://127.0.0.1:' + process.env.NOKTAPP_PORT;
 const OUT = '/home/claude/qr-onizleme';
 
@@ -11,7 +11,7 @@ const OUT = '/home/claude/qr-onizleme';
   const server = await bootstrap();
   db.setClientId(19);
   fs.mkdirSync(OUT, { recursive: true });
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+  const browser = await tarayiciAc();
   const page = await browser.newPage({ viewport: { width: 1500, height: 940 }, deviceScaleFactor: 2 });
   page.on('console', m => { if (m.type() === 'error') console.log('  console: ' + m.text()); });
 

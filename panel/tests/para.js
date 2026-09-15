@@ -16,10 +16,10 @@
  *
  *   NODE_PATH=/opt/node-tools/node_modules node panel/tests/para.js
  */
-const { chromium } = require('playwright-core');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const { tarayiciAc } = require('../../pos-service/test/tarayici');
 
 const BASE = process.env.PANEL || 'http://127.0.0.1:8090';
 const ADMIN = process.env.PANEL_ADMIN || 'erik@noktapp.com';
@@ -127,7 +127,7 @@ async function visit(page, label, url, opts = {}) {
     process.exit(1);
   }
 
-  const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+  const b = await tarayiciAc();
   try {
     for (const width of WIDTHS) {
       const ctx = await b.newContext({ viewport: { width, height: 950 } });

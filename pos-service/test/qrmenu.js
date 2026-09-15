@@ -31,13 +31,13 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
-const { chromium } = require('playwright-core');
 const db = require('../src/db');
 const auth = require('../src/auth');
 const guest = require('../src/modules/guest');
 const tok = require('../src/util/token');
 const qrcard = require('../src/modules/qrcard');
 const { bootstrap } = require('../src/index');
+const { tarayiciAc } = require('./tarayici');
 
 const BASE = 'http://127.0.0.1:' + process.env.NOKTAPP_PORT;
 const CID = 37;                       // a tenant of our own, so no other suite's tables move
@@ -383,7 +383,7 @@ async function fixture() {
   });
 
   /* ---- the browser half: every template, on a phone, with the awkward menu -- */
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+  const browser = await tarayiciAc();
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
   const pageErrors = [];
   page.on('pageerror', e => pageErrors.push(e.message));

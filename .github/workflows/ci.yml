@@ -18,7 +18,13 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --prefix pos-service --no-audit --no-fund
-      - run: npx --prefix pos-service eslint pos-service
+      # ESLint 9 looks for its flat config in the working directory, and the
+      # config lives in pos-service/. Run from the repo root and it reports
+      # "couldn't find eslint.config.js" and fails the job without ever
+      # looking at a line of code.
+      - name: ESLint
+        working-directory: pos-service
+        run: npx eslint .
 
   audit:
     name: npm audit (production deps)
@@ -54,11 +60,57 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
+
+      # PHP is here for the till's sake, not the panel's.
+      #
+      # The first run of this job skipped the four panel suites and assumed the
+      # rest of the bench did not care. It does. A till that has never spoken to
+      # the panel has no licence, so the login screen stops at "İşletme girişi"
+      # and never reaches the PIN pad - which is where ui, ui-all, yardim,
+      # qrmenu and station all begin. Fourteen of ui's seventeen checks timed
+      # out clicking a screen that was never going to appear.
+      #
+      # So the panel runs here as infrastructure: it is what makes the machine
+      # an activated machine. The panel's OWN suites are the job below.
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, mbstring, curl, json, zip, gd
+
       - run: npm ci --prefix pos-service --no-audit --no-fund
 
-      # The suites that talk to the cloud panel (integration, loyalty, zincir,
-      # geri) need a PHP panel that is not in this repository. They are skipped
-      # here and run locally; everything else is the real bench.
+      # The fixture drops and rebuilds nokpos_panel and nokpos_shared, and the
+      # service container only grants its user rights on the one database it
+      # was told to create. Without this the fixture's first statement comes
+      # back "Access denied for user 'noktapp'@'%'". Throwaway container.
+      - name: Let the fixture create its databases
+        run: |
+          mysql --protocol=tcp -h 127.0.0.1 -P 3399 -uroot -proot \
+            -e "GRANT ALL PRIVILEGES ON *.* TO 'noktapp'@'%'; FLUSH PRIVILEGES;"
+
+      # ui, ui-all, yardim, qrmenu and station drive a real Chromium. The
+      # sandbox this repo grew up in keeps one at /opt/pw-browsers and every
+      # suite used to hard-code that path, so on a runner they all died with
+      # "executable doesn't exist" before their first assertion. The path is
+      # gone now (test/tarayici.js); what is left is fetching the browser.
+      - name: Install Chromium for the browser suites
+        working-directory: pos-service
+        run: npx playwright install --with-deps chromium
+
+      - name: Build the panel and serve it
+        working-directory: pos-service
+        env:
+          DB_PORT: '3399'
+          DB_USER: noktapp
+          DB_PASS: nokpass
+        run: |
+          nohup bash test/panel-fixture.sh --serve > /tmp/panel.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://127.0.0.1:8090/ && break
+            sleep 2
+          done
+          curl -s -o /dev/null -w 'panel: %{http_code}\n' http://127.0.0.1:8090/
+
       - name: Run the bench
         working-directory: pos-service
         env:
@@ -66,7 +118,6 @@ jobs:
           DB_USER: noktapp
           DB_PASS: nokpass
           NOKTAPP_DATA_DIR: /tmp/nokdata
-          CI_SKIP_PANEL: '1'
         run: bash test/run-all.sh
 
       - name: Keep the logs when it fails
@@ -76,6 +127,7 @@ jobs:
           name: sinama-gunlukleri
           path: |
             /tmp/nokdata/logs
+            /tmp/panel.log
             pos-service/test/shots
           retention-days: 7
 
@@ -108,6 +160,17 @@ jobs:
           php-version: '8.2'
           extensions: pdo_mysql, mbstring, curl, json, zip, gd
       - run: npm ci --prefix pos-service --no-audit --no-fund
+
+      # panel-fixture.sh drops and rebuilds TWO databases - nokpos_panel and
+      # nokpos_shared - and the service container only ever grants its user
+      # rights on the single database it was told to create. So the fixture's
+      # very first statement came back "Access denied for user 'noktapp'@'%'
+      # to database 'nokpos_panel'" and the whole job fell over there. This
+      # container is thrown away at the end of the job; widen it.
+      - name: Let the fixture create its databases
+        run: |
+          mysql --protocol=tcp -h 127.0.0.1 -P 3399 -uroot -proot \
+            -e "GRANT ALL PRIVILEGES ON *.* TO 'noktapp'@'%'; FLUSH PRIVILEGES;"
 
       # The fixture builds the panel schema, one test tenant (client 19), an
       # active licence and the shared guest registry, then starts the four php

@@ -20,7 +20,6 @@ process.env.NOKTAPP_PORT = process.env.NOKTAPP_PORT || '7482';
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
-const { chromium } = require('playwright-core');
 const db = require('../src/db');
 const catalog = require('../src/modules/catalog');
 const { bootstrap } = require('../src/index');
@@ -51,9 +50,10 @@ async function step(name, fn) {
     }, null);
   }
   const bd = require('../src/util/businessDay');
+const { tarayiciAc } = require('./tarayici');
   await db.exec('DELETE FROM daily_closings WHERE client_id=? AND date=?', [CID, await bd.currentBusinessDate()]);
 
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+  const browser = await tarayiciAc();
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 
   /*

@@ -22,10 +22,10 @@
  *
  *   node panel/tests/teshis-shots.js
  */
-const { chromium } = require('playwright-core');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const { tarayiciAc } = require('../../pos-service/test/tarayici');
 
 const BASE = process.env.PANEL || 'http://127.0.0.1:8090';
 const ADMIN = process.env.PANEL_ADMIN || 'erik@noktapp.com';
@@ -144,7 +144,7 @@ function seed() {
     ['uyarilar', `?p=uyarilar`],
   ];
 
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+  const browser = await tarayiciAc();
   try {
     for (const width of WIDTHS) {
       const ctx = await browser.newContext({ viewport: { width, height: 950 } });

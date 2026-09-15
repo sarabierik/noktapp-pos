@@ -17,10 +17,10 @@
  *
  *   node panel/tests/shell.js
  */
-const { chromium } = require('playwright-core');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const { tarayiciAc } = require('../../pos-service/test/tarayici');
 
 const BASE = process.env.PANEL || 'http://127.0.0.1:8090';
 const ADMIN = process.env.PANEL_ADMIN || 'erik@noktapp.com';
@@ -222,7 +222,7 @@ async function walk(browser, ids) {
   const ids = { chain: +row[0], solo: +row[1] };
   console.log('tenants:', ids);
 
-  const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+  const b = await tarayiciAc();
   try { await walk(b, ids); } finally { await b.close(); }
 
   console.log(`\n  ${pass} geçti, ${fail} kaldı`);

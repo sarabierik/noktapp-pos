@@ -24,10 +24,10 @@ process.env.NOKTAPP_PORT = process.env.NOKTAPP_PORT || '7493';
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
-const { chromium } = require('playwright-core');
 const db = require('../src/db');
 const catalog = require('../src/modules/catalog');
 const { bootstrap } = require('../src/index');
+const { tarayiciAc } = require('./tarayici');
 
 const BASE = 'http://127.0.0.1:' + process.env.NOKTAPP_PORT;
 const CID = 19;
@@ -66,7 +66,7 @@ async function signIn(page, url) {
   const bd = require('../src/util/businessDay');
   await db.exec('DELETE FROM daily_closings WHERE client_id=? AND date=?', [CID, await bd.currentBusinessDate()]);
 
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+  const browser = await tarayiciAc();
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('console', (m) => {

@@ -39,6 +39,7 @@ const auth = require('../src/auth');
 const mod = require('../src/modules/receipt');
 const { decode } = require('../src/print/escpos');
 const { bootstrap } = require('../src/index');
+const { tarayiciAc } = require('./tarayici');
 
 const BASE = 'http://127.0.0.1:' + process.env.NOKTAPP_PORT;
 const CID = 83;
@@ -604,8 +605,7 @@ const PATCH = {
   });
 
   await step('the display page draws the new text, QR and image without losing its layout', async () => {
-    const { chromium } = require('playwright-core');
-    const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+    const browser = await tarayiciAc();
     const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
@@ -649,8 +649,7 @@ const PATCH = {
     await api('POST', '/api/receipt/display', {
       enabled: true, headline: 'Hoş geldiniz', subline: 'Afiyet olsun', foot_note: '',
       qr_enabled: false, qr_data: '', image_enabled: false, image_data: '', media_size: 'kucuk' });
-    const { chromium } = require('playwright-core');
-    const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+    const browser = await tarayiciAc();
     const page = await browser.newPage({ viewport: { width: 1400, height: 800 } });
     try {
       await page.goto(BASE + '/display.html');

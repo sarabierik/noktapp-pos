@@ -38,6 +38,7 @@ const path = require('path');
 const db = require('../src/db');
 const auth = require('../src/auth');
 const { bootstrap } = require('../src/index');
+const { tarayiciAc } = require('./tarayici');
 
 const BASE = 'http://127.0.0.1:' + process.env.NOKTAPP_PORT;
 const CID = 41;                        // a tenant of our own, so no other suite's stations move
@@ -593,7 +594,6 @@ const hasProblem = (st, kind) => st.problems.some(p => p.kind === kind);
   await api('POST', '/api/receipt/stations',
     { id: pide, name: 'Pide-' + CID, output_mode: 'printer' });
 
-  const { chromium } = require('playwright-core');
   const SHOTS = path.join(__dirname, 'shots');
   fs.mkdirSync(SHOTS, { recursive: true });
   await db.setSetting('setup_done', '1');
@@ -601,7 +601,7 @@ const hasProblem = (st, kind) => st.problems.some(p => p.kind === kind);
   await db.exec('DELETE FROM daily_closings WHERE client_id=? AND date=?',
     [CID, await bd.currentBusinessDate()]).catch(() => {});
 
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+  const browser = await tarayiciAc();
   const page = await browser.newPage({ viewport: { width: 1440, height: 950 } });
   const jsErrors = [];
   page.on('pageerror', e => jsErrors.push(e.message));

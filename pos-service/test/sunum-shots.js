@@ -11,9 +11,9 @@
 process.env.NOKTAPP_PORT = process.env.NOKTAPP_PORT || '7491';
 const path = require('path');
 const fs = require('fs');
-const { chromium } = require('playwright-core');
 const db = require('../src/db');
 const { bootstrap } = require('../src/index');
+const { tarayiciAc } = require('./tarayici');
 
 const BASE = 'http://127.0.0.1:' + process.env.NOKTAPP_PORT;
 const CID = 19;
@@ -25,7 +25,7 @@ const OUT = '/home/claude/sunum/img';
   fs.mkdirSync(OUT, { recursive: true });
   console.log('\nNOKTApp POS - sunum ekran görüntüleri\n');
 
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+  const browser = await tarayiciAc();
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 2 });
 
   const shot = async (name) => {

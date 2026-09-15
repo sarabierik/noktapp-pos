@@ -8,7 +8,6 @@
 process.env.NOKTAPP_PORT = process.env.NOKTAPP_PORT || '7471';
 const assert = require('assert');
 const path = require('path');
-const { chromium } = require('playwright');
 const db = require('../src/db');
 const auth = require('../src/auth');
 const { bootstrap } = require('../src/index');
@@ -44,6 +43,7 @@ async function step(name, fn) {
 
   // put the sandbox into "mid-service" shape: day open, shift open, menu present
   const bd = require('../src/util/businessDay');
+const { tarayiciAc } = require('./tarayici');
   const date = await bd.currentBusinessDate();
   await db.exec('DELETE FROM daily_closings WHERE client_id=? AND date=?', [CID, date]);
   if (!Number(await db.value('SELECT COUNT(*) FROM restaurant_tables WHERE client_id=?', [CID]))) {
@@ -86,7 +86,7 @@ async function step(name, fn) {
   const managerId = manager ? manager.id : 0;
   let orderId = null;
 
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--no-sandbox'] });
+  const browser = await tarayiciAc();
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
