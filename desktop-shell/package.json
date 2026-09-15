@@ -1,0 +1,22 @@
+{
+  "name": "noktapp-pos-desktop",
+  "productName": "NoktApp POS",
+  "version": "3.5.7",
+  "description": "NOKTApp POS - restoran kasa uygulamasi",
+  "main": "src/main.js",
+  "author": "NOKTApp <destek@noktapp.com>",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --publish never",
+    "dist:publish": "electron-builder --win nsis --publish always"
+  },
+  "devDependencies": {
+    "electron": "^31.3.1",
+    "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  }
+}

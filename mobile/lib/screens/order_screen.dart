@@ -1,0 +1,756 @@
+import 'package:flutter/material.dart';
+import '../models/models.dart';
+import '../services/api.dart';
+import '../services/queue.dart';
+import '../theme.dart';
+import 'bill_picker.dart';
+import 'bill_screen.dart';
+
+/// Taking the order.
+///
+/// The waiter builds a draft on the phone and sends it in one go. That is
+/// deliberate: one request per round means a weak signal costs one retry, not
+/// eight, and the kitchen gets one slip instead of a line at a time.
+///
+/// The whole screen hangs off ONE question: which adisyon is this round for.
+/// It used to answer that itself by taking the table's first open bill, which
+/// is only ever right when the table has exactly one. Now the answer arrives
+/// from the floor plan, is visible in the strip at the top, travels with the
+/// round to the till, and travels with it into the offline queue as well.
+class OrderScreen extends StatefulWidget {
+  final TableInfo table;
+  final List<Category> menu;
+
+  /// The adisyon the waiter chose. null means "whatever bill this table has",
+  /// which is only ever safe on an empty table or a table with exactly one -
+  /// the floor plan is what makes sure of that before it pushes this screen.
+  final int? orderId;
+
+  /// Open ANOTHER adisyon on a table that already has one. This is the case
+  /// that was impossible from the phone: two couples on a six-top.
+  final bool forceNew;
+
+  const OrderScreen({
+    super.key,
+    required this.table,
+    required this.menu,
+    this.orderId,
+    this.forceNew = false,
+  });
+
+  @override
+  State<OrderScreen> createState() => _OrderScreenState();
+}
+
+class _OrderScreenState extends State<OrderScreen> {
+  final List<DraftLine> draft = [];
+  /// null = the category CARDS are showing; an index = that category is open.
+  int? catIndex;
+  String search = '';
+  bool sending = false;
+
+  /// The bill this round is being written on. Kept in step with [forceNew]:
+  /// an id means a named bill, forceNew means a bill that does not exist yet,
+  /// and neither means "the one this table has".
+  int? orderId;
+  bool forceNew = false;
+
+  /// Every open bill on this table, for the strip and for the chooser.
+  TableBills? loaded;
+
+  List<OpenBill> get bills => loaded == null ? const <OpenBill>[] : loaded!.bills;
+
+  @override
+  void initState() {
+    super.initState();
+    orderId = widget.orderId;
+    forceNew = widget.forceNew;
+    _loadBills();
+  }
+
+  Future<void> _loadBills() async {
+    try {
+      final data = await fetchTableBills(widget.table.id);
+      if (!mounted) return;
+      setState(() {
+        loaded = data;
+        /*
+         * Adopt a bill ONLY when there is exactly one and nothing was chosen.
+         * The floor plan already asks whenever there is a choice to make; this
+         * covers the table that turned busy between the tap and this call.
+         * Taking bills.first when there are several is the bug this screen was
+         * rewritten to kill - it must not creep back in here.
+         */
+        if (orderId == null && !forceNew && data.bills.length == 1) {
+          orderId = data.bills.first.id;
+        }
+      });
+    } catch (_) {
+      // offline: the waiter has already answered the question in the sheet,
+      // and whatever he answered is what the queued round will carry
+    }
+  }
+
+  double get draftTotal => draft.fold(0.0, (s, l) => s + l.total);
+
+  /// Tapping a product adds a WHOLE portion. The half is something a guest
+  /// asks for, so it is asked for on the line, not here.
+  void _add(Product p) {
+    // a line WITH a note never merges with one without: "sogansiz" is not a
+    // quantity, and the kitchen slip has to be able to say which one it is
+    final same = draft.where((l) => l.product.id == p.id && l.note == null);
+    setState(() {
+      if (same.isNotEmpty) {
+        same.first.qty += 1;
+      } else {
+        draft.add(DraftLine(p));
+      }
+    });
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* which bill                                                        */
+  /* ---------------------------------------------------------------- */
+
+  Future<void> _switchTo(int id) async {
+    if (!forceNew && orderId == id) return;
+    final go = await _confirmSwitch();
+    if (!go || !mounted) return;
+    setState(() {
+      orderId = id;
+      forceNew = false;
+    });
+  }
+
+  Future<void> _switchToNew() async {
+    if (forceNew) return;
+    final go = await _confirmSwitch();
+    if (!go || !mounted) return;
+    setState(() {
+      orderId = null;
+      forceNew = true;
+    });
+  }
+
+  /// Changing bills with a half typed round in hand moves that round onto the
+  /// other guests' tab - the exact mistake this screen exists to prevent - so
+  /// it gets asked out loud instead of assumed.
+  Future<bool> _confirmSwitch() async {
+    if (draft.isEmpty) return true;
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('Adisyon degistirilsin mi?'),
+        content: const Text('Sepetteki urunler secilen adisyona yazilacak.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Vazgec', style: TextStyle(color: NokTheme.ink2))),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true), child: const Text('Degistir')),
+        ],
+      ),
+    );
+    return yes == true;
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* sending                                                           */
+  /* ---------------------------------------------------------------- */
+
+  Future<void> _send() async {
+    if (draft.isEmpty || sending) return;
+
+    /*
+     * Last gate before anything leaves the phone: never send a round to a
+     * table that holds several bills without naming one. Without order_id the
+     * till writes it on the table's FIRST open bill, and that is how one
+     * party's round landed on the other party's tab for weeks.
+     */
+    final data = loaded;
+    if (orderId == null && !forceNew && data != null && data.bills.length > 1) {
+      final c = await pickBill(context, widget.table.name, data);
+      if (c == null || !mounted) return;
+      setState(() {
+        orderId = c.orderId;
+        forceNew = c.isNew;
+      });
+    }
+
+    setState(() => sending = true);
+    final items = draft
+        .map((l) => {'product_id': l.product.id, 'qty': l.qty, 'note': l.note})
+        .toList();
+
+    // one body, built once, so the live call and the queued copy cannot
+    // disagree about which bill this round belongs to
+    final body = <String, dynamic>{
+      'table_id': widget.table.id,
+      'items': items,
+      'send': true,
+    };
+    if (orderId != null) {
+      body['order_id'] = orderId;
+    } else if (forceNew) {
+      body['force_new'] = true;
+    }
+
+    try {
+      final res = await Api.instance.call('POST', '/api/mobile/orders/take', body);
+      if (!mounted) return;
+      final newId = int.tryParse('${res['order_id']}') ?? 0;
+      setState(() {
+        draft.clear();
+        sending = false;
+        // the bill the till just opened IS this screen's bill from now on -
+        // otherwise a second round would open a third adisyon on the table
+        if (newId > 0) {
+          orderId = newId;
+          forceNew = false;
+        }
+      });
+      _loadBills();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Siparis mutfaga gonderildi'), backgroundColor: NokTheme.ok));
+      if (newId > 0) {
+        Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => BillScreen(orderId: newId, tableName: widget.table.name)));
+      }
+    } catch (e) {
+      // no connection: keep it on the phone and replay it later, carrying the
+      // chosen bill with it. A queued round that "finds a bill" at replay time
+      // is the same bug, hours later, when nobody is watching.
+      final op = <String, dynamic>{
+        'type': 'take_order',
+        'table_id': widget.table.id,
+        'items': items,
+        'send': true,
+      };
+      if (orderId != null) {
+        op['order_id'] = orderId;
+      } else if (forceNew) {
+        op['force_new'] = true;
+      }
+      await OfflineQueue.add(op);
+      if (!mounted) return;
+      setState(() {
+        draft.clear();
+        sending = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Baglanti yok - siparis telefonda saklandi, baglanti gelince gonderilecek'),
+          backgroundColor: NokTheme.orangeDark,
+          duration: Duration(seconds: 4)));
+      Navigator.of(context).pop();
+    }
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* the note                                                          */
+  /* ---------------------------------------------------------------- */
+
+  /// One sheet, two doors into it: long-pressing the product (where the
+  /// thought actually happens - the guest says it while pointing at the menu)
+  /// and the labelled "Not" button on the draft line. The owner looked for the
+  /// old pencil icon, did not find it, and concluded the feature was missing;
+  /// a control that has to be discovered does not exist.
+  Future<String?> _noteSheet(String productName, String initial, String action) {
+    final c = TextEditingController(text: initial);
+    const chips = [
+      'az pismis',
+      'orta',
+      'iyi pismis',
+      'sogansiz',
+      'acisiz',
+      'az buzlu',
+      'ayri gelsin'
+    ];
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(productName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                const Text('Mutfak notu',
+                    style: TextStyle(color: NokTheme.ink3, fontSize: 12.5)),
+                const SizedBox(height: 12),
+                TextField(
+                    controller: c,
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(hintText: 'ornek: sogansiz, az pismis')),
+                const SizedBox(height: 12),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (final t in chips)
+                    ActionChip(
+                      label: Text(t),
+                      // chips ADD to the note instead of replacing it: a guest
+                      // who wants it az pismis usually also wants it sogansiz
+                      onPressed: () {
+                        final cur = c.text.trim();
+                        c.text = cur.isEmpty ? t : '$cur, $t';
+                        c.selection =
+                            TextSelection.fromPosition(TextPosition(offset: c.text.length));
+                      },
+                      backgroundColor: Colors.white,
+                      side: const BorderSide(color: NokTheme.line),
+                    ),
+                ]),
+                const SizedBox(height: 18),
+                Row(children: [
+                  Expanded(
+                      child: OutlinedButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('Vazgec'))),
+                  const SizedBox(width: 10),
+                  Expanded(
+                      child: FilledButton(
+                          onPressed: () => Navigator.pop(ctx, c.text),
+                          child: Text(action))),
+                ]),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editNote(DraftLine line) async {
+    final res = await _noteSheet(line.product.name, line.note ?? '', 'Kaydet');
+    if (res == null || !mounted) return;
+    final clean = res.trim();
+    setState(() => line.note = clean.isEmpty ? null : clean);
+  }
+
+  Future<void> _addWithNote(Product p) async {
+    final res = await _noteSheet(p.name, '', 'Ekle');
+    if (res == null || !mounted) return;
+    final clean = res.trim();
+    // always its own line, never merged into an existing one - see _add
+    setState(() => draft.add(DraftLine(p, note: clean.isEmpty ? null : clean)));
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* build                                                             */
+  /* ---------------------------------------------------------------- */
+
+  @override
+  Widget build(BuildContext context) {
+    final cat = (catIndex == null || widget.menu.isEmpty)
+        ? null
+        : widget.menu[catIndex!.clamp(0, widget.menu.length - 1)];
+    final products = search.isEmpty
+        ? (cat?.products ?? <Product>[])
+        : widget.menu
+            .expand((c) => c.products)
+            .where((p) => p.name.toLowerCase().contains(search.toLowerCase()))
+            .toList();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.table.name),
+        actions: [
+          if (orderId != null)
+            TextButton(
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) =>
+                        BillScreen(orderId: orderId!, tableName: widget.table.name))),
+                child: const Text('Hesap', style: TextStyle(color: NokTheme.orangeDark))),
+        ],
+      ),
+      body: Column(children: [
+        _billStrip(),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+          child: TextField(
+            onChanged: (v) => setState(() => search = v),
+            decoration: const InputDecoration(
+                hintText: 'Urun ara',
+                prefixIcon: Icon(Icons.search, color: NokTheme.ink3),
+                contentPadding: EdgeInsets.symmetric(vertical: 4, horizontal: 12)),
+          ),
+        ),
+        /*
+         * KATEGORİLER KART OLARAK.
+         *
+         * The strip of chips ran off the side of the screen the moment a menu
+         * had more than about eight categories, and a handheld is narrower
+         * than a till - so the waiter was dragging a list sideways, one-handed,
+         * during service. The cards show every category at once with the
+         * number of products in it; tapping one opens it and the bar above
+         * turns into the way back.
+         */
+        if (search.isEmpty && catIndex != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 2, 14, 0),
+            child: Row(children: [
+              OutlinedButton.icon(
+                onPressed: () => setState(() => catIndex = null),
+                icon: const Icon(Icons.arrow_back, size: 16),
+                label: const Text('Kategoriler'),
+                style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    visualDensity: VisualDensity.compact),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                  child: Text(cat?.name ?? '',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+              Text('${cat?.products.length ?? 0} ürün',
+                  style: const TextStyle(color: NokTheme.ink3, fontSize: 12)),
+            ]),
+          ),
+        // the hint is only worth screen space before the first tap; once the
+        // draft has lines the labelled Not button on each of them says it
+        if (draft.isEmpty && (catIndex != null || search.isNotEmpty))
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text('Not eklemek için ürüne basılı tutun',
+                style: TextStyle(color: NokTheme.ink3, fontSize: 12)),
+          ),
+        /* the category cards, when no category is open and nothing is searched */
+        if (search.isEmpty && catIndex == null)
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.all(14),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2, childAspectRatio: 1.75,
+                  crossAxisSpacing: 10, mainAxisSpacing: 10),
+              itemCount: widget.menu.length,
+              itemBuilder: (_, i) {
+                final c = widget.menu[i];
+                return InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => setState(() => catIndex = i),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border.all(color: NokTheme.line),
+                        borderRadius: BorderRadius.circular(12)),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          /* a colour per category, so a waiter learns where
+                             "İçecekler" sits rather than reading every card */
+                          Container(
+                              width: 30, height: 5,
+                              decoration: BoxDecoration(
+                                  color: NokTheme.categoryColour(i),
+                                  borderRadius: BorderRadius.circular(3))),
+                          const Spacer(),
+                          Text(c.name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 2),
+                          Text('${c.products.length} ürün',
+                              style: const TextStyle(color: NokTheme.ink3, fontSize: 12)),
+                        ]),
+                  ),
+                );
+              },
+            ),
+          )
+        else
+        Expanded(
+          child: GridView.builder(
+            padding: const EdgeInsets.all(14),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2, childAspectRatio: 1.9, crossAxisSpacing: 10, mainAxisSpacing: 10),
+            itemCount: products.length,
+            itemBuilder: (_, i) {
+              final p = products[i];
+              final out = p.trackStock && p.stock <= 0;
+              return Opacity(
+                opacity: out ? .45 : 1,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: out ? null : () => _add(p),
+                  onLongPress: out ? null : () => _addWithNote(p),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border.all(color: NokTheme.line),
+                        borderRadius: BorderRadius.circular(10)),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(p.name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style:
+                                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                          Text(NokTheme.tl(p.price),
+                              style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: NokTheme.orangeDark)),
+                        ]),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        if (draft.isNotEmpty) _draftPanel(),
+      ]),
+    );
+  }
+
+  /// The other bills on this table, as tabs - and the way to open one more.
+  ///
+  /// The strip is the only place the phone ever states which adisyon it is
+  /// writing on, so it is never hidden while there is a bill on the table.
+  /// "+ Yeni adisyon" lives here because a busy table must ALWAYS be able to
+  /// open another one, including the single-bill table the floor plan walked
+  /// straight into without asking.
+  Widget _billStrip() {
+    final list = bills;
+    if (list.isEmpty && !forceNew) return const SizedBox.shrink();
+    return Container(
+      height: 58,
+      decoration: const BoxDecoration(
+          color: Colors.white, border: Border(bottom: BorderSide(color: NokTheme.line))),
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        children: [
+          for (final b in list)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _billChip(
+                label: b.shortName,
+                money: NokTheme.tl(b.total),
+                active: !forceNew && orderId == b.id,
+                onTap: () => _switchTo(b.id),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: _billChip(
+              label: '+ Yeni adisyon',
+              money: '',
+              active: forceNew,
+              onTap: _switchToNew,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _billChip({
+    required String label,
+    required String money,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+            color: active ? NokTheme.orange : Colors.white,
+            border: Border.all(color: active ? NokTheme.orange : NokTheme.line),
+            borderRadius: BorderRadius.circular(10)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(label,
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: active ? Colors.white : NokTheme.ink)),
+          if (money.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            Text(money,
+                style: TextStyle(
+                    fontSize: 13, color: active ? Colors.white : NokTheme.ink3)),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Widget _draftPanel() {
+    return Container(
+      decoration: const BoxDecoration(
+          color: Colors.white, border: Border(top: BorderSide(color: NokTheme.line))),
+      child: SafeArea(
+        top: false,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 250),
+            child: ListView.separated(
+              shrinkWrap: true,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              itemCount: draft.length,
+              separatorBuilder: (_, __) => const Divider(height: 1, color: NokTheme.line),
+              itemBuilder: (_, i) => _draftLine(draft[i]),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
+            child: Row(children: [
+              Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Toplam',
+                    style: TextStyle(color: NokTheme.ink3, fontSize: 12.5)),
+                Text(NokTheme.tl(draftTotal),
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+              ])),
+              SizedBox(
+                  width: 190,
+                  child: FilledButton(
+                      onPressed: sending ? null : _send,
+                      child: Text(sending ? 'Gonderiliyor...' : 'Mutfaga gonder'))),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// Two rows per line, on purpose. One row could not hold a name, a note
+  /// button, a stepper and a total on a 5-inch handheld without every one of
+  /// them becoming too small to hit while walking.
+  Widget _draftLine(DraftLine l) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(
+              child: Text(l.product.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
+          const SizedBox(width: 8),
+          Text(NokTheme.tl(l.total),
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+        ]),
+        const SizedBox(height: 6),
+        Row(children: [
+          Expanded(child: _noteButton(l)),
+          const SizedBox(width: 8),
+          _stepper(l),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _noteButton(DraftLine l) {
+    // flattened to a plain String: a nullable field does not stay promoted
+    // through a conditional expression, and Text() takes no nulls
+    final String note = l.note ?? '';
+    final has = note.isNotEmpty;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => _editNote(l),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 42, maxWidth: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+              color: has ? const Color(0xFFFFF1E8) : Colors.white,
+              border: Border.all(color: has ? NokTheme.orange : NokTheme.line),
+              borderRadius: BorderRadius.circular(8)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.edit_note,
+                size: 19, color: has ? NokTheme.orangeDark : NokTheme.ink3),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(has ? note : 'Not',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: has ? NokTheme.orangeDark : NokTheme.ink2)),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// Halves, not wholes.
+  ///
+  /// Yarim porsiyon is on every menu in the country and the till has always
+  /// sent it to the kitchen as a half; the phone stepped in whole units and
+  /// printed 1,5 as "2", so a waiter simply could not take the order. Whole
+  /// portions stay fast because tapping the product itself still adds one.
+  Widget _stepper(DraftLine l) {
+    final isHalf = l.qty != l.qty.roundToDouble();
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      _stepButton(Icons.remove, false, () {
+        setState(() {
+          // stepping through the doubled value keeps this exact - repeatedly
+          // adding 0.5 to a double eventually prints a quantity nobody typed
+          l.qty = ((l.qty * 2).round() - 1) / 2;
+          if (l.qty <= 0) draft.remove(l);
+        });
+      }),
+      SizedBox(
+        width: 56,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(NokTheme.qty(l.qty),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: isHalf ? NokTheme.orangeDark : NokTheme.ink)),
+          if (isHalf)
+            const Text('yarim',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 10, height: 1.1, color: NokTheme.orangeDark)),
+        ]),
+      ),
+      _stepButton(Icons.add, true, () {
+        setState(() => l.qty = ((l.qty * 2).round() + 1) / 2);
+      }),
+    ]);
+  }
+
+  Widget _stepButton(IconData icon, bool accent, VoidCallback onTap) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Container(
+        // 46 is the smallest square a gloved thumb hits reliably on a handheld
+        width: 46,
+        height: 46,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: accent ? NokTheme.orange : NokTheme.line),
+            borderRadius: BorderRadius.circular(10)),
+        child: Icon(icon, size: 22, color: accent ? NokTheme.orangeDark : NokTheme.ink),
+      ),
+    );
+  }
+}

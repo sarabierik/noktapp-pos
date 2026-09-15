@@ -1,0 +1,35 @@
+{
+  "name": "noktapp-pos-service",
+  "version": "2.3.2",
+  "description": "NOKTApp POS local service - runs on the restaurant PC, owns the local MariaDB, serves the till UI, the LAN mobile API and the cloud relay.",
+  "main": "src/index.js",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "bash test/run-all.sh",
+    "test:coverage": "c8 --reporter=text-summary --reporter=text --src=src --all bash test/run-all.sh",
+    "test:one": "node",
+    "test:panel": "bash test/tumu.sh --panel-only",
+    "test:full": "bash test/tumu.sh"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "bonjour-service": "^1.2.1",
+    "cors": "^2.8.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.11.0",
+    "nodemailer": "^10.0.10",
+    "pdfkit": "^0.15.0",
+    "qrcode-svg": "^1.1.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "c8": "^12.0.0",
+    "eslint": "^9.39.5",
+    "playwright": "^1.62.1"
+  }
+}

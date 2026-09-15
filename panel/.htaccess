@@ -1,0 +1,14 @@
+# NOKTApp POS panel
+Options -Indexes
+RewriteEngine On
+
+# guest QR menu:  /qr/<slug>/<masa-kodu>
+RewriteRule ^qr/([a-z0-9\-]+)/?([A-Za-z0-9]*)?$ qr/index.php?s=$1&t=$2 [L,QSA]
+
+# the desktop and phone APIs keep their real paths
+RewriteCond %{HTTPS} off
+RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
+
+<FilesMatch "^(config\.php)$">
+  Require all denied
+</FilesMatch>

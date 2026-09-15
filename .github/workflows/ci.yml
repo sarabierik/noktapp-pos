@@ -1,0 +1,80 @@
+name: CI
+
+# Every push and every pull request. The point of this file is that the test
+# bench stops being voluntary: it is excellent and, until now, nothing forced
+# it to run.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: ESLint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm ci --prefix pos-service --no-audit --no-fund
+      - run: npx --prefix pos-service eslint pos-service
+
+  audit:
+    name: npm audit (production deps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      # Only production dependencies: a dev-only advisory cannot reach a till,
+      # and failing the build on one teaches everyone to ignore this job.
+      # `high` is the gate; the two open moderates are documented in
+      # docs/GUVENLIK.md with the reason they are accepted.
+      - run: npm audit --prefix pos-service --omit=dev --audit-level=high
+
+  test:
+    name: Servis sınamaları
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: noktapp_pos
+          MARIADB_USER: noktapp
+          MARIADB_PASSWORD: nokpass
+        ports: ['3399:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - run: npm ci --prefix pos-service --no-audit --no-fund
+
+      # The suites that talk to the cloud panel (integration, loyalty, zincir,
+      # geri) need a PHP panel that is not in this repository. They are skipped
+      # here and run locally; everything else is the real bench.
+      - name: Run the bench
+        working-directory: pos-service
+        env:
+          DB_PORT: '3399'
+          DB_USER: noktapp
+          DB_PASS: nokpass
+          NOKTAPP_DATA_DIR: /tmp/nokdata
+          CI_SKIP_PANEL: '1'
+        run: bash test/run-all.sh
+
+      - name: Keep the logs when it fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sinama-gunlukleri
+          path: |
+            /tmp/nokdata/logs
+            pos-service/test/shots
+          retention-days: 7

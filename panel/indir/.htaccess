@@ -1,0 +1,6 @@
+# latest.yml is generated on the fly; the installer files themselves are static.
+RewriteEngine On
+RewriteRule ^latest\.yml$ latest.yml.php [L]
+<FilesMatch "\.(exe|blockmap)$">
+  Header set Cache-Control "public, max-age=86400"
+</FilesMatch>

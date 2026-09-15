@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="tr" data-tpl="noktapp">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#FF7A1A">
+<title>Menü</title>
+<!--
+  DIJITAL MENU - the guest's page.
+
+  This is the only page in the product served without a login, and it is a
+  separate document on purpose: the till's index.html carries the whole
+  application - screens, nav, the order engine - and none of that belongs on a
+  stranger's phone. A guest downloads this file and nothing else.
+
+  Three rules it is built to:
+
+   * NOTHING BUT NAME, PRICE, DESCRIPTION. The API it calls returns nothing
+     else; there is no code here that could display a cost or a stock level
+     because there is nothing to display.
+   * IT HAS TO WORK ON A TABLE. One request, no fonts from a CDN, no
+     framework, no images unless the venue uploaded one. A menu that waits on
+     a Google font over one bar of signal is a menu the guest gives up on.
+   * TWO STEPS, NOT ONE LIST. Categories first, then the category. Twenty-five
+     headings and two hundred products in one scroll is how the old menu made
+     finding a köfte impossible.
+
+  Turkish throughout, and the same accent as the till (#FF7A1A) so the page a
+  guest sees belongs to the same product as the receipt they are handed.
+-->
+<style>
+  :root{
+    --paper:#FBFAF8;
+    --card:#FFFFFF;
+    --ink:#1A1A1E;
+    --ink-2:#55555E;
+    --ink-3:#8B8B94;
+    --line:#E7E4DF;
+    --orange:#FF7A1A;
+    --orange-dark:#EA580C;
+    --orange-soft:#FFF3E9;
+    /* The accent as TYPE on light paper, which is a different problem from the
+       accent as a fill. #EA580C on this paper is 3.4:1 - fine on a monitor
+       indoors, unreadable on a terrace at two in the afternoon, and the price
+       is the one thing the guest came to the page for. This tone carries 5:1
+       and is still unmistakably the same orange. */
+    --ink-price:#C2410C;
+    --radius:14px;
+  }
+  /* Some venues run a dark room; the switch is theirs, not the phone's. */
+  html[data-theme="dark"]{
+    --paper:#141416;
+    --card:#1D1D21;
+    --ink:#F4F3F1;
+    --ink-2:#B9B8BD;
+    --ink-3:#84838B;
+    --line:#2E2E34;
+    --orange-soft:#3A2415;
+    --ink-price:#FF9A4D;   /* on near-black the LIGHT tone is the legible one */
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--paper);color:var(--ink);
+    font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+    padding-bottom:env(safe-area-inset-bottom);
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:640px;margin:0 auto;padding:0 16px 48px}
+
+  /* ------------------------------------------------------------ head */
+  header{padding:26px 0 18px;text-align:center}
+  .logo{width:74px;height:74px;border-radius:20px;object-fit:cover;margin:0 auto 12px;display:block;
+    border:1px solid var(--line);background:var(--card)}
+  .biz{
+    overflow-wrap:break-word;
+    font-family:Georgia,"Times New Roman",serif;
+    font-size:29px;line-height:1.15;letter-spacing:-.3px;margin:0;font-weight:600;
+  }
+  .welcome{color:var(--ink-2);font-size:14.5px;margin:8px 0 0}
+  .table-chip{
+    display:inline-flex;align-items:center;gap:7px;margin-top:14px;
+    padding:6px 13px;border-radius:16px;background:var(--orange-soft);
+    color:var(--ink-price);font-size:13px;font-weight:600;
+  }
+  .rule{height:1px;background:var(--line);margin:20px 0 4px}
+
+  /* ---------------------------------------------------------- search */
+  .search{position:relative;margin:16px 0 6px}
+  .search input{
+    width:100%;height:46px;padding:0 14px 0 40px;font-size:16px;
+    border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);
+    outline:none;
+  }
+  .search input:focus{border-color:var(--orange)}
+  .search svg{position:absolute;left:13px;top:14px;stroke:var(--ink-3)}
+
+  /* ------------------------------------------------------ categories */
+  .cats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+  .cat{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 14px;text-align:left;font:inherit;color:inherit;cursor:pointer;
+    display:flex;align-items:center;gap:12px;min-height:76px;
+  }
+  .cat:active{border-color:var(--orange)}
+  .cat__mark{
+    width:38px;height:38px;border-radius:11px;flex:none;display:grid;place-items:center;
+    background:var(--orange-soft);color:var(--ink-price);font-weight:700;font-size:17px;
+    font-family:Georgia,serif;
+  }
+  /* both halves are spans inside the button's own span, so they need to be
+     told to stack - inline they run into each other ("İçecekler2 ürün") */
+  .cat__name{display:block;font-weight:600;font-size:15.5px;line-height:1.25;overflow-wrap:break-word}
+  .cat__count{display:block;font-size:12.5px;color:var(--ink-3);margin-top:2px}
+
+  /* -------------------------------------------------------- products */
+  .back{
+    display:inline-flex;align-items:center;gap:8px;margin:16px 0 4px;padding:8px 12px 8px 8px;
+    border:1px solid var(--line);border-radius:11px;background:var(--card);color:var(--ink-2);
+    font:inherit;font-size:14px;cursor:pointer;
+  }
+  .sec-title{
+    font-family:Georgia,"Times New Roman",serif;font-size:23px;margin:18px 0 2px;font-weight:600;
+  }
+  .sec-title--sub{font-size:19px;margin-top:26px}
+  .items{margin-top:10px}
+  .item{
+    display:flex;gap:14px;align-items:baseline;padding:14px 0;border-bottom:1px solid var(--line);
+  }
+  .item:last-child{border-bottom:0}
+  /* flex-basis auto, not 0. Both halves were `flex:1`, so a row split its free
+     space evenly and a long product name wrapped into HALF the phone while the
+     leader dots kept the other half - eight lines of name next to a metre of
+     dots. The body now takes the width it needs and the leader takes what is
+     left, down to a 14px minimum. */
+  .item__body{flex:0 1 auto;min-width:0}
+  .item__name{font-size:16px;font-weight:600;line-height:1.3;overflow-wrap:break-word}
+  .item__desc{font-size:13.5px;color:var(--ink-2);margin-top:3px;line-height:1.45}
+  .item__price{
+    font-size:16px;font-weight:700;white-space:nowrap;color:var(--ink-price);
+    font-variant-numeric:tabular-nums;
+  }
+  /* the dotted leader between name and price - a menu convention, and it is
+     what keeps the eye on the right line when a description is three lines */
+  .item__lead{flex:1 1 auto;border-bottom:1px dotted var(--line);transform:translateY(-4px);min-width:14px}
+
+
+  /* The photo slot, always in the markup and hidden unless a template asks for
+     it. This is the whole reason there is one menu page and not twelve: a
+     template turns the slot on with one rule and inherits every bug fix. When
+     a product has no photo the slot still fills - with its initial - so a
+     half-photographed menu does not print as a row of holes. */
+  .item__thumb{display:none;flex:none;width:64px;height:64px;border-radius:10px;overflow:hidden;
+    background:var(--orange-soft);border:1px solid var(--line)}
+  .item__pic{width:100%;height:100%;object-fit:cover;display:block}
+  .item__pic--none{display:grid;place-items:center;font-family:Georgia,serif;font-weight:700;
+    font-size:22px;color:var(--ink-price)}
+
+  /* --------------------------------------------------------- states */
+  .msg{text-align:center;padding:56px 20px;color:var(--ink-2)}
+  .msg h2{font-family:Georgia,serif;font-size:22px;margin:0 0 8px;color:var(--ink)}
+  .msg p{margin:0;font-size:14.5px}
+  .spinner{
+    width:26px;height:26px;margin:0 auto 14px;border-radius:50%;
+    border:2.5px solid var(--line);border-top-color:var(--orange);animation:spin .7s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* --------------------------------------------------------- footer */
+  footer{margin-top:34px;padding-top:20px;border-top:1px solid var(--line);text-align:center;
+    color:var(--ink-3);font-size:13px}
+  .about{color:var(--ink-2);font-size:14px;margin:0 0 14px;line-height:1.6}
+  .links{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:14px}
+  .links a{
+    display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:11px;
+    border:1px solid var(--line);background:var(--card);color:var(--ink-2);
+    text-decoration:none;font-size:13.5px;
+  }
+  .brand{margin-top:16px;font-size:11.5px;letter-spacing:.3px;color:var(--ink-3)}
+</style>
+<!--
+  The twelve designs. One stylesheet over the markup above, selected by
+  <html data-tpl>, loaded after the base rules so a template always wins the
+  cascade. Twelve copies of this page would mean fixing a menu bug twelve
+  times, and eleven of them would be forgotten.
+-->
+<link rel="stylesheet" href="/menu-templates.css">
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="msg"><div class="spinner"></div><p>Menü yükleniyor…</p></div>
+</div>
+
+<script src="menu-page.js"></script>
+</body>
+</html>

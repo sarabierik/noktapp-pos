@@ -1,0 +1,33 @@
+<!--
+  These five keys have to be in ios/Runner/Info.plist. iOS 14 and later refuse
+  local-network discovery without them, and the app would silently never find
+  the till on the restaurant's wifi.
+
+  You do not have to paste them by hand. On the Mac, after
+  `flutter create --platforms=ios .`, run:
+
+      bash tools/ios-izinler.sh
+
+  which writes all of it with PlistBuddy. See BUILD-IOS.md step 6.
+  This file is kept only as a record of what that script writes.
+-->
+
+<key>NSLocalNetworkUsageDescription</key>
+<string>Restorandaki kasa bilgisayarini bulmak icin yerel ag erisimi gerekir.</string>
+
+<key>NSBonjourServices</key>
+<array>
+  <string>_noktapp-pos._tcp</string>
+</array>
+
+<key>NSAppTransportSecurity</key>
+<dict>
+  <key>NSAllowsLocalNetworking</key>
+  <true/>
+</dict>
+
+<key>NSCameraUsageDescription</key>
+<string>Kasadaki eslestirme karekodunu okutmak icin kamera gerekir.</string>
+
+<key>CFBundleDisplayName</key>
+<string>NOKTApp Garson</string>

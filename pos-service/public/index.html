@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NOKTApp POS</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- ============================ ONLINE LOGIN ============================ -->
+<div id="login" class="login">
+  <div class="login__brand">
+    <div class="login__logo"><div class="login__mark"><span></span></div> NOKTApp POS</div>
+    <div class="login__pitch">
+      <h1>Restoranınızın kasası,<br>kendi bilgisayarınızda.</h1>
+      <p>Adisyon, mutfak, ödeme ve raporlar internet olmadan da çalışır. Sunucumuz yalnızca lisansınızı doğrular ve yedeğinizi saklar.</p>
+      <div class="login__points">
+        <div class="login__point">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF7A1A" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+          <span>İnternet kesilse de satış durmaz</span>
+        </div>
+        <div class="login__point">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF7A1A" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+          <span>Yeni Nesil ÖKC ile tam uyumlu</span>
+        </div>
+        <div class="login__point">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF7A1A" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+          <span>Garson telefonundan sipariş, hesap yazdırma ve e-posta</span>
+        </div>
+        <div class="login__point">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF7A1A" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+          <span>15 dakikada bir yerel, her gece bulut yedeği</span>
+        </div>
+      </div>
+    </div>
+    <div class="login__foot">noktapp.com &nbsp;·&nbsp; 0850 84 00 654 &nbsp;·&nbsp; destek@noktapp.com</div>
+  </div>
+
+  <div class="login__form">
+    <div class="login__box">
+      <h2>İşletme girişi</h2>
+      <p class="sub">Size verdiğimiz e-posta ve şifre ile bir kez giriş yapın.</p>
+      <div id="loginAlert"></div>
+      <form id="loginForm">
+        <div class="field">
+          <label for="lgEmail">E-posta</label>
+          <input class="input" id="lgEmail" type="email" autocomplete="username" placeholder="isletme@ornek.com" required>
+        </div>
+        <div class="field">
+          <label for="lgPass">Şifre</label>
+          <input class="input" id="lgPass" type="password" autocomplete="current-password" placeholder="••••••••" required>
+        </div>
+        <button class="btn btn--primary btn--wide btn--lg" id="lgBtn" type="submit">Giriş yap</button>
+      </form>
+      <p class="muted" style="font-size:12.5px;margin-top:18px">
+        Cihaz kimliği: <span id="lgDevice" class="mono">—</span>
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================== APP SHELL ============================= -->
+<div id="shell" class="shell">
+  <header class="topbar">
+    <div class="topbar__brand"><div class="topbar__mark"><span></span></div> NOKTApp</div>
+    <div class="topbar__title" id="pageTitle">Masalar</div>
+    <div class="topbar__spacer"></div>
+    <div class="search">
+      <svg class="search__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input class="search__in" id="searchIn" type="search" autocomplete="off" spellcheck="false"
+             placeholder="Ara: KDV, vardiya, stok, yazıcı…" aria-label="Uygulamada ara">
+      <div class="search__drop" id="searchDrop"></div>
+    </div>
+    <!-- Next to the search box because it answers the other half of the same
+         question: that box says WHERE something is, this one says what it is
+         for. It matters more than F1 does - most of these machines are touch
+         screens whose keyboard is under the counter. -->
+    <button class="btn btn--ghost btn--sm btn--help" id="btnHelp" title="Yardım (F1)"
+            aria-label="Yardım">?</button>
+    <div class="chip" id="chipDay">İş günü <b id="bizDate">—</b></div>
+    <div class="chip" id="chipShift">Vardiya <b id="shiftState">—</b></div>
+    <div class="chip chip--live" id="chipUser"><b id="userName">—</b></div>
+    <button class="btn btn--ghost btn--sm" id="btnLock">Kilitle</button>
+  </header>
+
+  <nav class="nav" id="nav"></nav>
+  <div class="main" id="main"></div>
+</div>
+
+<div class="modal-back" id="modalBack"><div class="modal" id="modal"></div></div>
+<div class="toast-wrap" id="toasts"></div>
+
+<script src="app.js"></script>
+<script src="search-index.js"></script>
+<script src="screens.js"></script>
+<!--
+  One file per area. Order matters only in that screens.js must define the
+  registry first; these then attach to it. The service also serves this
+  directory, so adding a screen is adding a file and one line here.
+-->
+<script src="screens/stock.js"></script>
+<!-- para.js before settings.js: the Ayarlar screens read PARA_KEYS to know
+     which settings they must NOT draw a second control for. -->
+<script src="screens/para.js"></script>
+<script src="screens/settings.js"></script>
+<script src="screens/floor.js"></script>
+<script src="screens/finance.js"></script>
+<script src="screens/till.js"></script>
+<script src="screens/pricing.js"></script>
+<script src="screens/guest.js"></script>
+<script src="screens/device.js"></script>
+<script src="screens/fis.js"></script>
+<script src="screens/paket.js"></script>
+<script src="screens/entegrasyon.js"></script>
+<!--
+  Yardım last, and the content after the panel that draws it. Everything above
+  this line has finished registering its pages by now, which is what the help
+  index is checked against - a screen registered after the manual would be a
+  screen with no F1.
+-->
+<script src="screens/yardim.js"></script>
+<script src="help-index.js"></script>
+</body>
+</html>

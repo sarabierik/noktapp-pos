@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The phone talks to the till over the restaurant's own Wi-Fi, in plain HTTP,
+  at whatever address the router handed the PC - 192.168.1.20 today, 10.0.0.87
+  in the next restaurant. That address is discovered at run time and cannot be
+  written down here.
+
+  This file used to list 192.168.0.0, 10.0.0.0 and 172.16.0.0 as <domain>
+  entries with a base-config of cleartextTrafficPermitted="false". A <domain>
+  is matched as a HOST NAME, not as a subnet: it has no idea what a /16 is, so
+  "192.168.1.20" never matched "192.168.0.0" and every LAN call was blocked by
+  the platform before it left the phone. The app still worked, which is what
+  made it hard to see - it just quietly fell through to the cloud relay for
+  everything, on the restaurant's own wifi, and android:usesCleartextTraffic
+  on the manifest could not save it because a network security config wins
+  over that flag.
+
+  Android offers no way to say "private ranges only", so cleartext is allowed
+  generally. Nothing is actually downgraded by this: the only address the app
+  ever reaches outside the building is https://pos.noktapp.com, which is an
+  https:// URL in the code and stays TLS.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true"/>
+</network-security-config>

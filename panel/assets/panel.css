@@ -1,0 +1,436 @@
+/* ===========================================================================
+   NOKTApp POS - control panel design system.
+
+   House rules, unchanged and not negotiable:
+     - light surfaces, hairline borders, no drop shadows
+     - ONE accent hue: #FF7A1A, dark tone #EA580C
+     - never green, anywhere, in any state
+     - Turkish interface text
+
+   Two things worth knowing before editing colours here.
+
+   1. #FF7A1A and #EA580C are ONE hue, not a palette. Measured in OKLab they
+      sit 8.2 apart under normal vision (the safe floor is 15), so they can
+      never be used to tell two things apart - a reader cannot reliably see
+      which is which. Identity in this panel is therefore carried by text and
+      position, never by colour.
+   2. #FF7A1A on white is 2.61:1 - under the 3:1 a graphical mark needs. It is
+      legal for buttons and links, where a text label carries the meaning, and
+      NOT for a bar a reader has to measure. Data marks (.meter-fill) use
+      #EA580C, which clears 3:1, and every bar still prints its number.
+
+   Class names are load-bearing: admin/chain.php and admin/rapor.php were
+   built against them and are restyled by this file rather than edited.
+   =========================================================================== */
+
+:root{
+  --bg:#F4F4F6; --surface:#fff; --surface-2:#FAFAFA;
+  --line:#E4E4E7; --line-2:#EFEFF1;
+  --ink:#18181B; --ink2:#52525B; --ink3:#8A8A93;
+  --orange:#FF7A1A;      /* brand accent - buttons, links, focus */
+  --orange-dark:#EA580C; /* the only tone allowed to carry a data mark */
+  --orange-soft:#FFF3E9; --orange-line:#FFD9BC;
+  --red:#B42318; --red-soft:#FDECEA; --red-line:#F5C6C2;
+  --ok:#1F1F24; --ok-soft:#F1F1F3;    /* "good" is ink, never green */
+  --radius:10px; --radius-lg:14px;
+  --side-w:250px;   /* the fixed sidebar */
+  --h-bar:56px;     /* the phone top bar that carries the hamburger */
+  /* What a sticky element has to clear at the top of the viewport. Zero on the
+     desktop shell (the chrome is all down the left side), the bar's height
+     once the sidebar becomes a drawer. .rail reads it. */
+  --h-top:0px;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+     font:15px/1.45 "Segoe UI",Inter,system-ui,-apple-system,sans-serif;
+     -webkit-font-smoothing:antialiased}
+a{color:var(--orange-dark);text-decoration:none}
+a:hover{text-decoration:underline}
+h1,h2,h3,h4{letter-spacing:-.01em}
+
+/* ------------------------------- chrome ---------------------------------- */
+/*
+ * A fixed left sidebar, not a row of links.
+ *
+ * The panel used to put every screen in one flat line across the top, which
+ * says all fourteen screens are the same kind of thing and none of them
+ * belongs to anything. Grouped down the left, the product has parts you can
+ * name - customers, money, support, releases, system - and a new area can be
+ * added without the chrome having to be rethought.
+ *
+ * The sidebar is the ONLY fixed element on the desktop shell, so the content
+ * column keeps the whole height of the window for itself.
+ */
+.brand{font-weight:700;display:flex;align-items:center;gap:9px;white-space:nowrap;font-size:15px}
+.brand em{font-style:normal;color:var(--ink3);font-weight:500}
+.mark{width:24px;height:24px;border-radius:7px;background:var(--orange);display:inline-block;flex:none}
+
+.side{position:fixed;top:0;left:0;bottom:0;width:var(--side-w);z-index:40;
+      background:var(--surface);border-right:1px solid var(--line);
+      display:flex;flex-direction:column;min-width:0}
+.side-brand{display:flex;align-items:center;gap:10px;flex:none;
+            padding:15px 16px;border-bottom:1px solid var(--line);
+            font-weight:700;font-size:15px;color:var(--ink);white-space:nowrap}
+.side-brand:hover{text-decoration:none;color:var(--ink)}
+.side-brand em{font-style:normal;color:var(--ink3);font-weight:500}
+
+/* Search sits under the brand because it is the fastest way to a customer and
+   it belongs to the whole panel, not to whichever screen is open. It POSTs: a
+   licence key is a credential and must never reach a URL, the browser history
+   or the server's access log. */
+.side-search{padding:12px 12px 6px;flex:none;margin:0}
+.side-search input{height:34px;margin:0;padding:0 11px;font-size:13px;width:100%;
+                   background:var(--bg);border-color:transparent}
+.side-search input:focus{background:#fff;border-color:var(--orange)}
+
+/* The groups. This is the part that has to survive a fifteenth screen. */
+.side-nav{flex:1 1 auto;overflow-y:auto;padding:8px 10px 16px;min-height:0}
+.nav-group{padding:3px 3px 5px;margin-bottom:3px;border:1px solid transparent;border-radius:11px}
+/* The open group is filled, so the eye finds the section before it finds the
+   item. Fill AND a darker heading AND a marker on the item - never colour on
+   its own, because this product has one hue and it cannot tell two things
+   apart. */
+.nav-group.on{background:var(--surface-2);border-color:var(--line-2)}
+.nav-h{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;
+       color:var(--ink3);padding:9px 10px 6px 14px;-webkit-user-select:none;user-select:none;
+       cursor:default}
+.nav-group.on .nav-h{color:var(--ink2)}
+.side-nav ul{list-style:none;margin:0;padding:0}
+.side-nav li{margin:1px 0}
+.side-nav a{display:block;position:relative;padding:7px 10px 7px 14px;border-radius:8px;
+            font-size:13.5px;color:var(--ink2);overflow-wrap:anywhere}
+.side-nav a:hover{background:var(--bg);color:var(--ink);text-decoration:none}
+.side-nav a.on{background:var(--orange-soft);color:var(--orange-dark);font-weight:700}
+.side-nav a.on::before{content:"";position:absolute;left:4px;top:7px;bottom:7px;width:3px;
+                       border-radius:2px;background:var(--orange-dark)}
+
+/* Who is signed in, pinned to the floor of the sidebar. */
+.side-me{flex:none;border-top:1px solid var(--line);padding:10px 12px;
+         display:flex;align-items:center;gap:10px}
+.me-who{flex:1;min-width:0}
+.me-who b{display:block;font-size:13px;font-weight:600;color:var(--ink);
+          overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.me-who i{display:block;font-style:normal;font-size:11.5px;color:var(--ink3);
+          overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.me-out{flex:none;font-size:12.5px;color:var(--ink2);border:1px solid var(--line);
+        border-radius:8px;padding:5px 10px;background:var(--surface)}
+.me-out:hover{background:var(--bg);color:var(--ink);text-decoration:none;border-color:#D4D4D8}
+
+/* The drawer furniture only exists below 1000px; see the responsive block. */
+.topbar,.nav-scrim,.nav-toggle{display:none}
+
+main{margin-left:var(--side-w);padding:26px 28px 64px}
+/* The content gets a measure. Full-bleed tables on a 27" monitor are how a
+   dashboard turns into a spreadsheet. */
+.page-w{max-width:1240px;margin:0 auto;min-width:0}
+
+/* --------------------------- page header pattern ------------------------- */
+/* One shape for every screen: eyebrow, title, one line of subtext, actions. */
+.page-head{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;
+           padding-bottom:14px;margin-bottom:18px;border-bottom:1px solid var(--line)}
+.page-head .ph-txt{min-width:0;flex:1}
+.page-head .eyebrow{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;
+                    color:var(--ink3);font-weight:600;margin-bottom:5px}
+.page-head h1{font-size:23px;margin:0;letter-spacing:-.02em;overflow-wrap:anywhere}
+.page-head .sub{color:var(--ink3);font-size:13.5px;margin:5px 0 0;overflow-wrap:anywhere}
+.page-head .ph-act{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+h2{font-size:20px;margin:0 0 16px;letter-spacing:-.02em}
+h3{font-size:14.5px;margin:0 0 12px;letter-spacing:-.01em}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin:26px 0 12px;flex-wrap:wrap}
+.sec-head h3{margin:0}
+.sec-head .sub{color:var(--ink3);font-size:13px}
+
+.row{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.sp{flex:1}
+.muted{color:var(--ink3)}
+.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12.5px}
+.r{text-align:right}
+.nums{font-variant-numeric:tabular-nums}
+
+/* -------------------------------- tiles ---------------------------------- */
+/* A KPI row, not a chart: a handful of headline numbers, each a link to the
+   list of who. A number that implies something is wrong is never a dead end. */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:12px;margin-bottom:18px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);
+      padding:14px 16px;min-width:0;display:block;color:inherit}
+.stat > span{display:block;color:var(--ink3);font-size:12.5px;margin-bottom:4px;overflow-wrap:anywhere}
+.stat small .pill{margin-right:4px}
+.stat b{font-size:27px;letter-spacing:-.03em;line-height:1.1;display:block}
+.stat small{display:block;color:var(--ink3);font-size:12px;margin-top:5px;overflow-wrap:anywhere}
+.stat b.warn{color:var(--orange-dark)}
+.stat b.bad{color:var(--red)}
+a.stat{transition:border-color .12s}
+a.stat:hover{text-decoration:none;border-color:var(--orange);background:var(--surface)}
+a.stat:hover small{color:var(--orange-dark)}
+.stat.hero b{font-size:40px}
+
+/* ------------------------- detail page (one customer) --------------------- */
+/*
+ * A customer page is not a stack of full-width cards.
+ *
+ * It was, and the licence controls - the four things done to an account every
+ * day - were laid across the full width in four columns, each under a
+ * paragraph explaining itself. The paragraphs were longer than the controls,
+ * so the page read as documentation with buttons hidden in it. The rail fixes
+ * that by giving the controls a narrow column where a label and a control sit
+ * on one line and the prose has nowhere to go.
+ */
+.detail{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}
+/* minmax(0,1fr), never a bare 1fr: a grid column defaults to min-width:auto,
+   so a wide table inside it pushes the column - and the whole page - past the
+   right edge of the phone instead of scrolling inside its own .scroll-x. */
+@media (max-width:1150px){.detail{grid-template-columns:minmax(0,1fr)}}
+.rail{display:grid;gap:14px;position:sticky;top:calc(var(--h-top) + 14px)}
+@media (max-width:1150px){.rail{position:static}}
+
+/*
+ * A control row in a 340px rail STACKS: the label on its own line, the control
+ * under it. Putting them side by side is what a wide form does, and in a rail
+ * it pushed every button past the right edge of its own card - the buttons
+ * were literally outside the border. Stacked, nothing can overflow no matter
+ * how long the Turkish label turns out to be.
+ */
+.ctl{padding:11px 0;border-bottom:1px solid var(--line-2)}
+.ctl:last-of-type{border-bottom:0;padding-bottom:2px}
+.ctl > span{display:block;margin-bottom:7px}
+.ctl > span b{display:block;color:var(--ink);font-weight:600;font-size:13.5px}
+.ctl > span i{display:block;font-style:normal;color:var(--ink3);font-size:11.5px;margin-top:1px}
+.ctl .ctl-act{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.ctl .ctl-act .btn{flex:none}
+/* the control takes the room the buttons beside it leave, so nothing is cut */
+.ctl input[type=number]{width:72px}
+.ctl input[type=text]{flex:1;min-width:0}
+.ctl select{flex:1;min-width:0}
+
+/* The licence key: a credential, so it is masked until asked for and copyable
+   in one press - reading twenty-four characters down a telephone is how they
+   get typed in wrong. Key on its own line, buttons under it, because at this
+   width all three on one line is what clipped the key. */
+.keyline{background:var(--surface-2);border:1px solid var(--line);border-radius:9px;
+  padding:10px 11px;margin:2px 0 6px}
+.keyline code{display:block;font:600 12.5px/1.4 ui-monospace,Menlo,Consolas,monospace;
+  letter-spacing:.6px;color:var(--ink);word-break:break-all}
+.keyline .keybtns{display:flex;gap:6px;margin-top:8px}
+
+/* -------------------------------- cards ---------------------------------- */
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;align-items:start}
+.cols-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:14px;align-items:start}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);
+      padding:16px 18px;min-width:0}
+.card > h3{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.card > h3 .sp{flex:1}
+.card > h3 a{font-size:12.5px;font-weight:500}
+.card table{width:100%;border-collapse:collapse}
+.card td{padding:8px 0;border-bottom:1px solid var(--line-2);font-size:13.5px;vertical-align:top;
+         overflow-wrap:break-word}
+.card tr:last-child td{border-bottom:0}
+.card-tight{padding:0}
+.card-tight > h3{padding:16px 18px 12px;margin:0}
+
+/* -------------------------------- tables --------------------------------- */
+/* Denser than a default table and still readable: 13.5px, 9px rows, hairline
+   rules, numbers tabular so columns line up. */
+table.grid{width:100%;border-collapse:collapse;background:var(--surface);
+           border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden}
+.grid th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
+         color:var(--ink3);font-weight:600;padding:10px 13px;border-bottom:1px solid var(--line);
+         background:var(--surface-2);white-space:nowrap}
+.grid td{padding:9px 13px;border-bottom:1px solid var(--line-2);font-size:13.5px;
+         vertical-align:top;overflow-wrap:break-word}
+.grid tr:last-child td{border-bottom:0}
+.grid tbody tr:hover,.grid tr:hover{background:var(--surface-2)}
+.grid th.r,.grid td.r{text-align:right;font-variant-numeric:tabular-nums}
+.grid td.r,.grid td.nums,.grid td.mono,.nums{white-space:nowrap;overflow-wrap:normal}
+.grid .t-name{font-weight:600;color:var(--ink)}
+.grid .t-name:hover{color:var(--orange-dark)}
+.grid .t-sub{color:var(--ink3);font-size:12px;font-weight:400;margin-top:2px}
+.scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+/* ----------------------------- empty states ------------------------------ */
+/* An empty state says what to do next. "Henüz özet gelmedi" tells the vendor
+   nothing he can act on; "no till has sent one - their PCs may be off" does. */
+.empty{padding:22px 18px;text-align:center;color:var(--ink3);font-size:13.5px}
+.empty b{display:block;color:var(--ink2);font-size:14px;font-weight:600;margin-bottom:5px}
+.empty p{margin:0 auto;max-width:440px;line-height:1.5}
+.empty .btn{margin-top:14px}
+td .empty,.card .empty{text-align:left;padding:14px 0}
+.card .empty p{margin:0}
+
+/* --------------------------------- meter --------------------------------- */
+/* One ratio against a whole. Single hue: the fill is the dark tone (it clears
+   3:1 on white, the light one does not) and the track is a light step of the
+   same ramp, so state reads across the whole bar. The number is always
+   printed beside it - the bar supplements the figure, it never replaces it. */
+.meter{height:8px;border-radius:4px;background:var(--orange-soft);overflow:hidden;min-width:70px}
+.meter i{display:block;height:100%;border-radius:4px;background:var(--orange-dark)}
+.meter.q{background:#EFEFF1}      /* track follows the fill's ramp, never a mixed pair */
+.meter.q i{background:#B4B4BB}    /* de-emphasis: an old build is not "good news orange" */
+.meter-row{display:flex;align-items:center;gap:10px}
+.meter-row .meter{flex:1}
+.meter-row .mv{font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--ink2);
+               white-space:nowrap;min-width:76px;text-align:right}
+
+/* --------------------------------- forms --------------------------------- */
+label{display:block;font-size:13px;color:var(--ink2);margin-bottom:12px}
+input,select,textarea{width:100%;margin-top:5px;height:38px;padding:0 11px;
+  border:1px solid #D9D9DE;border-radius:var(--radius);font:inherit;font-size:14px;background:#fff;color:var(--ink)}
+textarea{height:auto;min-height:70px;padding:8px 11px;line-height:1.45}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--orange);box-shadow:0 0 0 3px var(--orange-soft)}
+input[type=checkbox]{box-shadow:none}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+.f3{display:grid;grid-template-columns:repeat(3,1fr);gap:0 14px}
+label.chk{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+label.chk input{width:17px;height:17px;margin:0;flex:none}
+fieldset{border:0;padding:0;margin:0 0 6px}
+.hint{color:var(--ink3);font-size:12.5px;margin:-4px 0 12px;line-height:1.45}
+
+/* -------------------------------- buttons -------------------------------- */
+.btn{height:38px;padding:0 15px;border:1px solid transparent;border-radius:var(--radius);
+     background:var(--orange);color:#fff;font-weight:600;font-size:13.5px;cursor:pointer;
+     display:inline-flex;align-items:center;justify-content:center;gap:6px;
+     line-height:1;white-space:nowrap;font-family:inherit}
+.btn:hover{background:var(--orange-dark);text-decoration:none;color:#fff}
+.btn-sm{height:31px;padding:0 11px;font-size:12.5px}
+.btn-ghost{background:#fff;color:var(--ink2);border-color:var(--line)}
+.btn-ghost:hover{background:var(--bg);color:var(--ink);border-color:#D4D4D8}
+.btn-danger{background:#fff;color:var(--red);border-color:var(--red-line)}
+.btn-danger:hover{background:var(--red-soft);color:var(--red)}
+form.inline{display:inline-flex;margin:0;gap:6px;align-items:center}
+form.inline select,form.inline input{margin-top:0;height:31px;font-size:12.5px;width:auto}
+.btn-group{display:flex;gap:6px;flex-wrap:wrap}
+
+/* --------------------------------- pills --------------------------------- */
+/* "Good" is ink on grey. There is no green in this product line. */
+.pill{display:inline-block;padding:2px 8px;border-radius:11px;font-size:11.5px;font-weight:600;
+      background:var(--ok-soft);color:var(--ink2);white-space:nowrap}
+.pill-active,.pill-answered{background:var(--ok-soft);color:var(--ok);font-weight:700}
+.pill-trial,.pill-queued{background:var(--orange-soft);color:var(--orange-dark)}
+.pill-suspended,.pill-expired{background:var(--red-soft);color:var(--red)}
+.pill-out{background:var(--red-soft);color:var(--red)}
+
+/* ------------------------------- messages -------------------------------- */
+.flash{background:var(--orange-soft);border:1px solid var(--orange-line);color:var(--orange-dark);
+       padding:11px 14px;border-radius:var(--radius);margin-bottom:16px;font-size:13.5px;line-height:1.5}
+.flash a{color:var(--orange-dark);text-decoration:underline}
+.flash.bad{background:var(--red-soft);border-color:var(--red-line);color:var(--red)}
+.flash.bad a{color:var(--red)}
+.alert{background:var(--red-soft);border:1px solid var(--red-line);color:var(--red);
+       padding:10px 13px;border-radius:9px;margin-bottom:14px;font-size:13.5px}
+.alert--ok{background:var(--ok-soft);border-color:var(--line);color:var(--ink)}
+.alert--error{background:var(--red-soft);border-color:var(--red-line);color:var(--red)}
+.key{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;background:var(--surface-2);
+     border:1px solid var(--line);padding:8px 11px;border-radius:8px;font-size:13px;
+     overflow-wrap:anywhere;margin:0 0 12px}
+
+/* guncelle.php was written against these two. */
+table.tbl{width:100%;border-collapse:collapse;background:var(--surface);
+          border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden}
+.tbl th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);
+        padding:10px 13px;border-bottom:1px solid var(--line);background:var(--surface-2)}
+.tbl td{padding:9px 13px;border-bottom:1px solid var(--line-2);font-size:13.5px}
+.tbl tr:last-child td{border-bottom:0}
+.tbl .right,.right{text-align:right}
+.wrap{max-width:760px}
+
+/* --------------------------------- login --------------------------------- */
+/* Not a small card floating in half a blank screen: two full-height columns,
+   the form column filled to its own rhythm, and the panel actually says what
+   it is on the way in. */
+.login-body{background:var(--bg);margin:0}
+.login-split{display:grid;grid-template-columns:1.15fr 1fr;min-height:100vh}
+.login-art{background:linear-gradient(155deg,#1A1A1E 0%,#26262C 52%,#3E2A1C 100%);
+           color:#fff;padding:56px 60px;display:flex;flex-direction:column;min-width:0}
+.login-art .brand{font-size:19px;color:#fff}
+.login-art .brand em{color:#9A9AA4}
+.login-art .art-mid{margin:auto 0}
+.login-art h1{font-size:40px;line-height:1.1;letter-spacing:-.03em;margin:0 0 16px;max-width:12ch}
+.login-art .lede{color:#C2C2CB;max-width:44ch;font-size:15.5px;line-height:1.55;margin:0}
+.login-art .facts{display:grid;grid-template-columns:1fr 1fr;gap:1px;margin-top:44px;
+                  background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.09);border-radius:12px;overflow:hidden}
+.login-art .facts div{background:#1F1F24;padding:15px 17px;min-width:0}
+.login-art .facts b{display:block;font-size:19px;letter-spacing:-.02em}
+.login-art .facts span{display:block;color:#9A9AA4;font-size:12.5px;margin-top:3px;overflow-wrap:anywhere}
+.login-art .foot{color:#76767F;font-size:12.5px;margin:0}
+.login-form{background:var(--surface);display:flex;flex-direction:column;justify-content:center;
+            padding:56px 60px;min-width:0;border-left:1px solid var(--line)}
+.login-form .box{width:100%;max-width:400px;margin:0 auto;background:none;border:0;padding:0}
+.login-form h2{font-size:26px;letter-spacing:-.02em;margin:0 0 6px}
+.login-form .lead{color:var(--ink3);font-size:14px;margin:0 0 26px}
+.login-form label{font-size:13px;font-weight:500;color:var(--ink2);margin-bottom:14px}
+.login-form input{height:44px;font-size:15px}
+.login-form .btn{width:100%;height:44px;font-size:15px;margin-top:4px}
+.login-form .note{color:var(--ink3);font-size:12.5px;margin:24px 0 0;line-height:1.5;
+                  border-top:1px solid var(--line);padding-top:18px}
+
+/* ------------------------------ responsive ------------------------------- */
+/* He opens this on the move; it has to survive a laptop and a phone. */
+@media(max-width:1180px){
+  .login-art{padding:44px 40px}.login-form{padding:44px 40px}
+  .login-art h1{font-size:34px}
+}
+/* The sidebar keeps its width all the way down to the drawer breakpoint - a
+   nav that shrinks with the window is a nav whose labels start truncating. */
+@media(max-width:1200px){main{padding:24px 20px 60px}}
+
+/*
+ * Under 1000px the sidebar leaves the page and becomes a drawer.
+ *
+ * The toggle is a checkbox, not a script. The menu is the one control that has
+ * to work on a phone standing in a customer's shop, and a stylesheet cannot
+ * load halfway the way a script can fail halfway. The checkbox is the hit
+ * target itself - transparent, fixed exactly over the drawn bars - so it takes
+ * focus and toggles on Space like any other checkbox, with no JavaScript
+ * anywhere in the shell.
+ */
+@media(max-width:999px){
+  :root{--h-top:var(--h-bar)}
+  .topbar{display:flex;align-items:center;position:fixed;top:0;left:0;right:0;height:var(--h-bar);
+          padding:0 14px 0 62px;background:var(--surface);border-bottom:1px solid var(--line);z-index:43}
+  .burger{display:block;position:absolute;left:12px;top:8px;width:40px;height:40px;
+          border:1px solid var(--line);border-radius:9px;background:var(--surface)}
+  .burger i{position:absolute;left:11px;right:11px;height:2px;border-radius:1px;background:var(--ink2)}
+  .burger i:nth-child(1){top:13px} .burger i:nth-child(2){top:19px} .burger i:nth-child(3){top:25px}
+  .nav-toggle{display:block;position:fixed;left:12px;top:8px;width:40px;height:40px;z-index:60;
+              margin:0;padding:0;opacity:0;cursor:pointer;border:0;background:none;
+              -webkit-appearance:none;appearance:none}
+  .nav-toggle:focus-visible ~ .topbar .burger{border-color:var(--orange);box-shadow:0 0 0 3px var(--orange-soft)}
+  .side{width:272px;max-width:86vw;z-index:50;transform:translateX(-100%);
+        transition:transform .18s ease}
+  .nav-toggle:checked ~ .side{transform:none}
+  .nav-scrim{display:none;position:fixed;top:0;right:0;bottom:0;left:0;z-index:44;
+             background:rgba(24,24,27,.38)}
+  .nav-toggle:checked ~ .nav-scrim{display:block}
+  main{margin-left:0;padding:calc(var(--h-bar) + 18px) 14px 48px}
+
+  /*
+   * A wide table scrolls inside itself, it does not drag the page sideways.
+   *
+   * Most screens wrap their table in .scroll-x; the chain screens do not, and
+   * a seven-column table on a 430px phone was pushing the whole document 300px
+   * wide - page header, cards and all. This is containment, not restyling: the
+   * table keeps every one of its own rules, and the tbody is still a table at
+   * 100% so a narrow one still fills its column rather than shrinking to fit.
+   */
+  table.grid,table.tbl{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table.grid > tbody,table.tbl > tbody{display:table;width:100%}
+}
+@media(prefers-reduced-motion:reduce){.side{transition:none}}
+
+@media(max-width:960px){
+  .login-split{grid-template-columns:1fr}
+  .login-art{padding:36px 26px}
+  .login-art .art-mid{margin:0}
+  .login-art .facts{display:none}
+  .login-form{padding:32px 26px;border-left:0}
+  .cols-2{grid-template-columns:1fr}
+  .f3{grid-template-columns:1fr}
+}
+@media(max-width:720px){
+  .f2{grid-template-columns:1fr}
+  .stats{grid-template-columns:1fr 1fr}
+  .page-head h1{font-size:20px}
+  .stat b{font-size:23px}
+  .stat.hero b{font-size:32px}
+}
+@media(max-width:440px){.stats{grid-template-columns:1fr}}

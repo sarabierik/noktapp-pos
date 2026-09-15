@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>NOKTApp POS - Müşteri Ekranı</title>
+<style>
+  :root{--orange:#FF7A1A;--ink:#141417}
+  *{box-sizing:border-box;margin:0}
+  body{height:100vh;overflow:hidden;background:var(--ink);color:#fff;
+       font:16px/1.4 "Segoe UI",Inter,system-ui,sans-serif;display:grid;grid-template-columns:1fr 420px}
+  .stage{position:relative;display:flex;flex-direction:column;justify-content:space-between;padding:56px}
+  .stage::after{content:"";position:absolute;right:-220px;bottom:-220px;width:720px;height:720px;border-radius:50%;
+    background:radial-gradient(circle at 35% 35%,rgba(255,122,26,.5),rgba(255,122,26,0) 66%)}
+  .brand{display:flex;align-items:center;gap:16px;position:relative;z-index:1}
+  .mark{width:56px;height:56px;border-radius:16px;background:var(--orange);display:grid;place-items:center}
+  .mark span{width:18px;height:18px;border-radius:50%;background:#fff}
+  .brand h1{font-size:30px;font-weight:700;letter-spacing:-.4px}
+  .msg{position:relative;z-index:1;max-width:640px}
+  .msg h2{font-size:52px;line-height:1.08;font-weight:700;letter-spacing:-1px;margin-bottom:14px}
+  .msg p{font-size:20px;color:#B9B9C2}
+  .foot{position:relative;z-index:1;color:#7A7A85;font-size:14px}
+  .rail{background:#fff;color:var(--ink);display:grid;grid-template-rows:auto 1fr auto}
+  .rail__head{padding:26px 26px 18px;border-bottom:1px solid #ECECEF}
+  .rail__head small{color:#8E8E96;font-size:13px}
+  .rail__head h3{font-size:22px;margin-top:4px}
+  .lines{overflow:auto;padding:8px 0}
+  .ln{display:grid;grid-template-columns:auto 1fr auto;gap:12px;padding:12px 26px;align-items:start}
+  .ln+.ln{border-top:1px solid #F2F2F4}
+  .q{min-width:32px;height:26px;border-radius:6px;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:600}
+  .n{font-size:15px}
+  .t{font-weight:600;font-variant-numeric:tabular-nums}
+  .sum{padding:22px 26px;border-top:1px solid #ECECEF;background:#FAFAFA}
+  .row{display:flex;justify-content:space-between;color:#6B6B73;font-size:15px;margin-bottom:6px}
+  .grand{display:flex;justify-content:space-between;align-items:baseline;margin-top:12px}
+  .grand span{font-size:17px;color:#6B6B73}
+  .grand b{font-size:40px;letter-spacing:-1px;font-variant-numeric:tabular-nums}
+  .idle{display:grid;place-items:center;height:100%;color:#A6A6AE;font-size:17px;text-align:center;padding:30px}
+  /* Ayarlardan eklenen küçük karekod / görsel. Şablon aynı kaldı: bunlar
+     var olan sol sütunun içine, karşılama yazısı ile alt yazının arasına
+     girer ve kapalıyken hiç yer kaplamaz. */
+  .extras{position:relative;z-index:1;display:flex;gap:26px;align-items:flex-start;
+    flex-wrap:wrap;margin-top:30px}
+  .extras:empty{display:none}
+  /* "kucuk kalsin" - the box is capped against the SCREEN as well as in pixels,
+     so a 1024x768 second monitor cannot end up with a karekod that pushes the
+     alt yazi off the bottom. */
+  /* Both boxes are SQUARE and the media is contained inside them, never
+     stretched and never cropped: a karekod that touches its own frame does not
+     scan, and a logo squeezed into a portrait box is not the logo any more.
+     `aspect-ratio` keeps the two side by side at the same height whatever
+     shape the uploaded picture happens to be. */
+  .xbox{background:#fff;border-radius:14px;padding:14px;display:grid;place-items:center;
+    aspect-ratio:1/1;max-width:30vh;max-height:30vh;overflow:hidden}
+  .xbox svg,.xbox img{display:block;width:100%;height:100%;max-width:100%;max-height:100%;
+    object-fit:contain}
+  .xcap{color:#B9B9C2;font-size:13px;line-height:1.35;text-align:center;margin-top:10px;
+    max-width:100%;word-break:break-word}
+  .xitem{display:flex;flex-direction:column;align-items:center;max-width:30vh}
+  /* Sosyal medya: a drawn mark and the name to type. Not a link - nobody taps
+     a customer display - and not a URL either, because "instagram.com/x" is
+     longer to read and says less than "@x". */
+  .social{position:relative;z-index:1;display:flex;gap:26px;flex-wrap:wrap;
+    align-items:center;margin-top:26px}
+  .social:empty{display:none}
+  .soc{display:flex;align-items:center;gap:10px;color:#D4D4DA;font-size:19px;
+    letter-spacing:-.2px}
+  .soc svg{width:26px;height:26px;flex:none;fill:none;stroke:#FF9A4D;stroke-width:1.9;
+    stroke-linecap:round;stroke-linejoin:round}
+  .soc b{font-weight:600;color:#F0F0F3}
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="brand"><div class="mark"><span></span></div><h1 id="biz">NOKTApp</h1></div>
+    <div class="msg"><h2 id="headline">Hoş geldiniz</h2><p id="subline">Afiyet olsun</p>
+      <div class="extras" id="extras"></div>
+      <div class="social" id="social"></div></div>
+    <div class="foot" id="footNote">NOKTApp POS</div>
+  </div>
+  <aside class="rail">
+    <div class="rail__head"><small id="tableName">—</small><h3 id="billNo">Adisyon</h3></div>
+    <div class="lines" id="lines"><div class="idle">Şu anda açık adisyon yok.</div></div>
+    <div class="sum" id="sum"></div>
+  </aside>
+
+<script src="/social-marks.js"></script>
+<script src="display.js"></script>
+</body>
+</html>

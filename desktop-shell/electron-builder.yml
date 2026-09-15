@@ -1,0 +1,55 @@
+appId: com.noktapp.pos
+productName: NoktApp POS
+copyright: NOKTApp
+directories:
+  output: ../dist
+  buildResources: assets
+
+# The shell itself is tiny; everything the restaurant needs is carried in
+# extraResources, so the installer is one file and nothing is downloaded later.
+files:
+  - src/**/*
+  - assets/**/*
+  - package.json
+  - "!**/*.map"
+
+extraResources:
+  - from: ../pos-service
+    to: pos-service
+    filter:
+      - "**/*"
+      - "!test/**"
+      - "!**/*.log"
+  - from: ../database
+    to: database
+    filter: ["*.sql", "migrations/**"]
+  - from: ../vendor/mariadb
+    to: mariadb
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: assets/icon.ico
+  artifactName: NoktAppPOS-Setup-${version}.${ext}
+  requestedExecutionLevel: requireAdministrator
+
+nsis:
+  # A cosmetic NSIS warning must not fail a customer's build. Real errors
+  # still stop it; this only stops warning 6000 and friends from being fatal.
+  warningsAsErrors: false
+  oneClick: false
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: NoktApp POS
+  installerLanguages: [tr_TR]
+  language: 1055
+  include: ../installer/installer.nsh
+  deleteAppDataOnUninstall: false
+
+publish:
+  provider: generic
+  url: https://pos.noktapp.com/indir
+  channel: latest
