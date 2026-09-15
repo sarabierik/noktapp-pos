@@ -35,7 +35,7 @@ jobs:
       - run: npm audit --prefix pos-service --omit=dev --audit-level=high
 
   test:
-    name: Servis sınamaları
+    name: Servis sınamaları (kasa)
     runs-on: ubuntu-latest
     services:
       mariadb:
@@ -77,4 +77,70 @@ jobs:
           path: |
             /tmp/nokdata/logs
             pos-service/test/shots
+          retention-days: 7
+
+  panel:
+    name: Panel sınamaları (PHP)
+    runs-on: ubuntu-latest
+    # The panel is the other half of the product - the admin screens, the chain
+    # menu, the reports, the diagnostics, the alerts. It is PHP with its own
+    # suites under panel/tests/, and until now they only ever ran on one laptop.
+    # Running one half and calling it "the tests passed" is how a half ships
+    # broken; that is what test/tumu.sh exists to say, so CI says it too.
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_USER: noktapp
+          MARIADB_PASSWORD: nokpass
+        ports: ['3399:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, mbstring, curl, json, zip, gd
+      - run: npm ci --prefix pos-service --no-audit --no-fund
+
+      # The fixture builds the panel schema, one test tenant (client 19), an
+      # active licence and the shared guest registry, then starts the four php
+      # workers behind the proxy. It drops and rebuilds both databases every
+      # run - which is exactly why it must never be pointed at a live one.
+      - name: Build the panel and serve it
+        working-directory: pos-service
+        env:
+          DB_PORT: '3399'
+          DB_USER: noktapp
+          DB_PASS: nokpass
+        run: |
+          nohup bash test/panel-fixture.sh --serve > /tmp/panel.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://127.0.0.1:8090/ && break
+            sleep 2
+          done
+          curl -s -o /dev/null -w 'panel: %{http_code}\n' http://127.0.0.1:8090/
+
+      - name: Run the panel suites
+        working-directory: pos-service
+        env:
+          DB_PORT: '3399'
+          DB_USER: noktapp
+          DB_PASS: nokpass
+        run: bash test/tumu.sh --panel-only
+
+      - name: Keep the logs when it fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: panel-gunlukleri
+          path: |
+            /tmp/panel.log
+            panel/tests/shots
           retention-days: 7
