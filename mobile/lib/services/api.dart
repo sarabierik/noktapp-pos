@@ -375,7 +375,7 @@ class Api {
       'device_id': deviceId,
       'device_name': phoneName,
       'platform': 'mobile',
-      'app_version': '1.6.0',
+      'app_version': '1.7.0',
     };
 
     String? base;
@@ -428,6 +428,27 @@ class Api {
     await p.setString('device_name', phoneName);
     await save();
     return json;
+  }
+
+  /// Put a label on a table, or clear it by sending an empty one.
+  ///
+  /// `kalici` null leaves the sticky flag as the till has it, so renaming a
+  /// VIP table does not quietly make its label temporary.
+  Future<Map<String, dynamic>> setEtiket(int tableId, String etiket, {bool? kalici}) =>
+      call('POST', '/api/mobile/tables/$tableId/etiket', {
+        'etiket': etiket,
+        if (kalici != null) 'kalici': kalici,
+      });
+
+  /// Labels already in use in this restaurant, offered as chips so the same
+  /// words are not typed twice on four different phones.
+  Future<List<String>> etiketler() async {
+    try {
+      final r = await call('GET', '/api/mobile/etiketler');
+      return ((r['etiketler'] ?? []) as List).map((e) => '$e').toList();
+    } catch (_) {
+      return const [];
+    }
   }
 
   String newOpId() => _uuid.v4();

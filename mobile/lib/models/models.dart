@@ -45,6 +45,20 @@ class TableInfo {
   /// for weeks and the id costs no extra request.
   final int? groupOrderId;
 
+  /// The free-text label a waiter put on this table from his phone.
+  ///
+  /// The NAME is furniture - "MS101", "Teras 3" - fixed when the room was
+  /// drawn. It is not what anybody in the restaurant says. They say "Ahmet
+  /// Bey'in masasi", "dogum gunu olan masa", "rezerve 20:30", and that used to
+  /// live in the head of whoever seated them. Now it is on the table and every
+  /// handset sees it.
+  final String etiket;
+
+  /// false: the label belongs to the party and the till deletes it when the
+  /// last bill closes. true: it belongs to the table itself - VIP, sigara
+  /// icilir, deniz manzarali - and survives the table going empty.
+  final bool etiketKalici;
+
   TableInfo.fromJson(Map<String, dynamic> j)
       : id = j['id'] as int,
         zoneId = j['zone_id'] as int?,
@@ -52,6 +66,8 @@ class TableInfo {
         openBills = (j['open_bills'] ?? 0) as int,
         openTotal = double.tryParse('${j['open_total'] ?? 0}') ?? 0,
         labels = (j['labels'] ?? '').toString(),
+        etiket = (j['etiket'] ?? '').toString(),
+        etiketKalici = j['etiket_kalici'] == true || j['etiket_kalici'] == 1,
         groupOrderId =
             j['group_order_id'] == null ? null : int.tryParse('${j['group_order_id']}');
   bool get busy => openBills > 0;

@@ -246,6 +246,122 @@ class _TablesScreenState extends State<TablesScreen> {
         ),
       );
 
+  /// "Bu masaya etiket ver".
+  ///
+  /// One field, the labels this restaurant already uses as chips, and one
+  /// switch that decides whether the words belong to the guests or to the
+  /// table. Everything else - who typed it, when - the till records by itself.
+  Future<void> _etiketVer(TableInfo t) async {
+    final ctrl = TextEditingController(text: t.etiket);
+    var kalici = t.etiketKalici;
+    var kaydediliyor = false;
+    final gecmis = await Api.instance.etiketler();
+    if (!mounted) return;
+
+    final sonuc = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetCtx) => StatefulBuilder(builder: (sheetCtx, setSheet) {
+        Future<void> kaydet(String? deger) async {
+          if (kaydediliyor) return;
+          setSheet(() => kaydediliyor = true);
+          try {
+            await Api.instance.setEtiket(t.id, deger ?? ctrl.text, kalici: kalici);
+            if (sheetCtx.mounted) Navigator.of(sheetCtx).pop(true);
+          } catch (e) {
+            setSheet(() => kaydediliyor = false);
+            if (sheetCtx.mounted) {
+              ScaffoldMessenger.of(sheetCtx).showSnackBar(
+                  SnackBar(content: Text(e.toString()), backgroundColor: NokTheme.orangeDark));
+            }
+          }
+        }
+
+        return Padding(
+          padding: EdgeInsets.only(
+              left: 18, right: 18, top: 10,
+              bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 18),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(child: Container(width: 38, height: 4, margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(color: NokTheme.line, borderRadius: BorderRadius.circular(2)))),
+              Text('Masa etiketi · ${t.name}',
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              const Text('Masanin uzerinde ve butun telefonlarda gorunur.',
+                  style: TextStyle(color: NokTheme.ink3, fontSize: 12.5)),
+              const SizedBox(height: 14),
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                textCapitalization: TextCapitalization.words,
+                maxLength: 60,
+                decoration: const InputDecoration(
+                  hintText: 'Ahmet Bey, dogum gunu, rezerve 20:30...',
+                  counterText: '',
+                ),
+                onSubmitted: (v) => kaydet(v),
+              ),
+              if (gecmis.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                const Text('HIZLI ETIKET',
+                    style: TextStyle(fontSize: 10.5, letterSpacing: .7, color: NokTheme.ink3)),
+                const SizedBox(height: 6),
+                Wrap(spacing: 7, runSpacing: 7, children: [
+                  for (final g in gecmis.take(10))
+                    ActionChip(
+                      label: Text(g, style: const TextStyle(fontSize: 12.5)),
+                      onPressed: () => setSheet(() => ctrl.text = g),
+                    ),
+                ]),
+              ],
+              const SizedBox(height: 14),
+              /* The one decision worth a switch. Left off, the label is the
+                 party's and dies with their bill - which is what a customer
+                 name must do, or tomorrow's guests are greeted by yesterday's
+                 name. Turned on, it is the table's own and stays. */
+              SwitchListTile.adaptive(
+                value: !kalici,
+                onChanged: kaydediliyor ? null : (v) => setSheet(() => kalici = !v),
+                activeColor: NokTheme.orange,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Masa bosalinca sil',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                subtitle: const Text(
+                    'Kapatirsaniz VIP, Rezerve, Sigara icilir gibi kalici etiket olur.',
+                    style: TextStyle(fontSize: 11.5, color: NokTheme.ink3)),
+              ),
+              const SizedBox(height: 6),
+              Row(children: [
+                if (t.etiket.isNotEmpty)
+                  TextButton(
+                    onPressed: kaydediliyor ? null : () => kaydet(''),
+                    child: const Text('Sil', style: TextStyle(color: NokTheme.orangeDark)),
+                  ),
+                const Spacer(),
+                TextButton(
+                    onPressed: kaydediliyor ? null : () => Navigator.of(sheetCtx).pop(false),
+                    child: const Text('Vazgec')),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: kaydediliyor ? null : () => kaydet(null),
+                  child: kaydediliyor
+                      ? const SizedBox(width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('Kaydet'),
+                ),
+              ]),
+            ]),
+        );
+      }),
+    );
+
+    if (sonuc == true && mounted) _load();
+  }
+
   Widget _tableCard(TableInfo t) {
     // "3 adisyon" tells a waiter nothing about which one is his party's;
     // "3 adisyon - A, B, C" lets him decide before the sheet even opens
@@ -255,6 +371,9 @@ class _TablesScreenState extends State<TablesScreen> {
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: () => _openTable(t),
+      /* Long press, not a menu button: the card is already the size of a
+         thumb and a waiter's other hand is holding plates. */
+      onLongPress: () => _etiketVer(t),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -270,11 +389,46 @@ class _TablesScreenState extends State<TablesScreen> {
             const SizedBox(width: 8),
             Expanded(child: Text(t.name,
                 style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
+            /* Long press does the same thing, but nobody discovers a long
+               press. The tag is how the feature gets found on day one. */
+            InkWell(
+              onTap: () => _etiketVer(t),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.all(3),
+                child: Icon(Icons.sell_outlined, size: 17,
+                    color: t.etiket.isEmpty ? NokTheme.ink3 : NokTheme.orangeDark),
+              ),
+            ),
           ]),
           const SizedBox(height: 4),
           Text(line,
               maxLines: 1, overflow: TextOverflow.ellipsis,
               style: const TextStyle(color: NokTheme.ink3, fontSize: 12.5)),
+          /*
+           * THE LABEL, AND WHY IT IS THE LOUDEST THING ON THE CARD.
+           *
+           * "MS101" identifies the table to the system. "Ahmet Bey" identifies
+           * it to the people working the floor, and it is the only line on
+           * this card anybody reads out loud. So when it exists it gets the
+           * weight, and the table's own name stays above it as the address.
+           */
+          if (t.etiket.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Row(children: [
+              if (t.etiketKalici) ...[
+                const Icon(Icons.push_pin, size: 12, color: NokTheme.orangeDark),
+                const SizedBox(width: 4),
+              ],
+              Expanded(
+                child: Text(t.etiket,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w700, color: NokTheme.orangeDark)),
+              ),
+            ]),
+          ],
           const Spacer(),
           Text(t.busy ? NokTheme.tl(t.openTotal) : '',
               style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: NokTheme.orangeDark)),
