@@ -5,8 +5,10 @@
 
   Ne yapar:
     1. Imza anahtarini bulur; yoksa olusturur (sifreyi SIZ yazarsiniz).
-    2. flutter create ile uretilen Android projesini yayina hazirlar:
-       applicationId, imza ayarlari, minify.
+    2. android\app\build.gradle.kts dosyasini bastan YAZAR. Eski surumler bu
+       dosyaya parca parca ekleme yapiyordu; bir denemenin kalintisi bir
+       sonrakini bozuyordu. Artik dosyanin tamami tek bir sablondan uretiliyor,
+       yani kac kere calistirirsaniz calistirin sonuc ayni.
     3. app-release.aab dosyasini uretir ve nerede oldugunu soyler.
 
   ONEMLI - ANAHTARI KAYBETMEYIN.
@@ -23,7 +25,7 @@ function Step($n,$t){ Write-Host "`n[$n] $t" -ForegroundColor Cyan }
 function Fail($m){ Write-Host "`n  HATA: $m`n" -ForegroundColor Red; exit 1 }
 
 if (-not (Test-Path 'pubspec.yaml')) { Fail 'Bu dosyayi proje klasorunde calistirin.' }
-if (-not (Test-Path 'android\app\build.gradle') -and -not (Test-Path 'android\app\build.gradle.kts')) {
+if (-not (Test-Path 'android\app\src\main\AndroidManifest.xml')) {
   Fail 'Once .\KUR.ps1 calistirin - Android projesi henuz uretilmemis.'
 }
 
@@ -63,128 +65,88 @@ if (-not (Test-Path $props)) {
   Write-Host "  Yazildi: $props  (bu dosyayi kimseyle paylasmayin, git'e eklemeyin)" -ForegroundColor Green
 }
 
-# --- 2. gradle'i yayina hazirla -------------------------------------------
-Step 2 "Android projesi yayina hazirlaniyor"
-$gradle = if (Test-Path 'android\app\build.gradle.kts') { 'android\app\build.gradle.kts' } else { 'android\app\build.gradle' }
-$kts    = $gradle.EndsWith('.kts')
-$yedek  = "$gradle.noktapp-yedek"
+# --- 2. gradle dosyasini bastan yaz ---------------------------------------
+Step 2 "android\app\build.gradle.kts yeniden yaziliyor"
 
-# Her calistirmada TEMIZ dosyadan basla. Ikinci bir calistirma, bir oncekinin
-# ekledigi bloklarin ustune yazmasin diye.
-#
-# Ve yedegin KENDISI temiz olmali: bir onceki surum bozuk bir blok eklediyse ve
-# yedek o dosyadan alindiysa, her calistirma bozuklugu geri getirir. Bu yuzden
-# yedekte bizim izimiz varsa yedek gecersiz sayilir.
-function Temiz([string]$metin) {
-  return -not ($metin -match 'noktappImzaAyari' -or
-               $metin -match 'noktappAnahtar'   -or
-               $metin -match 'val p = java\.util\.Properties')
+# Eski surumlerin biraktigi her sey gitsin: groovy ikizi, yedekler.
+foreach ($eski in @(
+    'android\app\build.gradle',
+    'android\app\build.gradle.kts.noktapp-yedek',
+    'android\app\build.gradle.noktapp-yedek')) {
+  if (Test-Path $eski) { Remove-Item $eski -Force }
 }
 
-if (Test-Path $yedek) {
-  if (Temiz (Get-Content $yedek -Raw)) {
-    Copy-Item $yedek $gradle -Force
-  } else {
-    Remove-Item $yedek -Force
-    Fail @"
-Yedek dosya bozuk (onceki surumun ekledigi blogu iceriyor) ve silindi.
-Temiz bir Android projesi uretmek icin once sunu calistirin:
+$sablon = @'
+import java.util.Properties
+import java.io.FileInputStream
 
-    .\KUR.ps1
-
-sonra tekrar:
-
-    .\YAYIN.ps1
-"@
-  }
-} else {
-  if (-not (Temiz (Get-Content $gradle -Raw))) {
-    Fail @"
-android\app\build.gradle dosyasinda onceki bir denemenin kalintisi var.
-Temiz bir Android projesi uretmek icin once sunu calistirin:
-
-    .\KUR.ps1
-
-sonra tekrar:
-
-    .\YAYIN.ps1
-"@
-  }
-  Copy-Item $gradle $yedek -Force
-}
-$g = Get-Content $gradle -Raw
-
-# applicationId
-$g = $g -replace 'applicationId\s*=\s*"[^"]*"', 'applicationId = "com.noktapp.garson"'
-$g = $g -replace 'applicationId\s+"[^"]*"',     'applicationId "com.noktapp.garson"'
-
-if ($kts) {
-  # Import'lar dosyanin EN BASINDA olmali. Properties'i burada acmak sart:
-  # android { } blogunun icinde "java" adi Gradle'in kendi java eklentisine
-  # cozuluyor ve java.util.Properties() derlenmiyor.
-  if ($g -notmatch 'import java\.util\.Properties') {
-    $g = "import java.util.Properties`r`nimport java.io.FileInputStream`r`n`r`n" + $g
-  }
-  if ($g -notmatch 'noktappAnahtar') {
-    $blok = @'
-
-// noktappAnahtar
-val noktappAnahtar = Properties()
-val noktappAnahtarDosyasi = rootProject.file("key.properties")
-if (noktappAnahtarDosyasi.exists()) {
-    FileInputStream(noktappAnahtarDosyasi).use { noktappAnahtar.load(it) }
+plugins {
+    id("com.android.application")
+    id("kotlin-android")
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id("dev.flutter.flutter-gradle-plugin")
 }
 
-'@
-    # plugins { ... } blogundan hemen SONRA
-    $g = [regex]::Replace($g, '(?s)(plugins\s*\{.*?
-\})', "`$1`r`n$blok", 1)
-  }
-  if ($g -notmatch 'noktappImzaAyari') {
-    $imza = @'
-    // noktappImzaAyari
+// Imza bilgileri android/key.properties dosyasindan okunur.
+// O dosya git'e girmez ve hicbir pakete konmaz.
+val imzaAyar = Properties()
+val imzaDosyasi = rootProject.file("key.properties")
+if (imzaDosyasi.exists()) {
+    FileInputStream(imzaDosyasi).use { imzaAyar.load(it) }
+}
+
+android {
+    namespace = "com.noktapp.garson"
+    compileSdk = maxOf(flutter.compileSdkVersion, 35)
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    defaultConfig {
+        applicationId = "com.noktapp.garson"
+        minSdk = flutter.minSdkVersion
+        targetSdk = maxOf(flutter.targetSdkVersion, 35)
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
     signingConfigs {
         create("release") {
-            keyAlias = noktappAnahtar.getProperty("keyAlias")
-            keyPassword = noktappAnahtar.getProperty("keyPassword")
-            storePassword = noktappAnahtar.getProperty("storePassword")
-            val yol = noktappAnahtar.getProperty("storeFile")
+            keyAlias = imzaAyar.getProperty("keyAlias")
+            keyPassword = imzaAyar.getProperty("keyPassword")
+            storePassword = imzaAyar.getProperty("storePassword")
+            val yol = imzaAyar.getProperty("storeFile")
             if (yol != null) { storeFile = file(yol) }
         }
     }
 
-'@
-    $g = [regex]::Replace($g, '(?m)^(\s*buildTypes\s*\{)', "$imza`$1", 1)
-  }
-  $g = $g -replace 'signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)', 'signingConfig = signingConfigs.getByName("release")'
-} else {
-  if ($g -notmatch 'noktappImzaAyari') {
-    $imza = @'
-    // noktappImzaAyari
-    signingConfigs {
+    buildTypes {
         release {
-            def np = new Properties()
-            def nf = rootProject.file("key.properties")
-            if (nf.exists()) { nf.withInputStream { st -> np.load(st) } }
-            keyAlias np.getProperty("keyAlias")
-            keyPassword np.getProperty("keyPassword")
-            storePassword np.getProperty("storePassword")
-            if (np.getProperty("storeFile") != null) { storeFile file(np.getProperty("storeFile")) }
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
+}
 
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+flutter {
+    source = "../.."
+}
 '@
-    $g = [regex]::Replace($g, '(?m)^(\s*buildTypes\s*\{)', "$imza`$1", 1)
-  }
-  $g = $g -replace 'signingConfig\s+signingConfigs\.debug', 'signingConfig signingConfigs.release'
-}
 
-Set-Content -Path $gradle -Value $g -Encoding UTF8
-if ($g -match 'signingConfigs\.getByName\("release"\)' -or $g -match 'signingConfigs\.release') {
-  Write-Host "  build.gradle hazir: imza + applicationId com.noktapp.garson" -ForegroundColor Green
-} else {
-  Write-Host "  UYARI: release imzasi baglanamadi - paket debug anahtari ile imzalanabilir." -ForegroundColor Yellow
-}
+# BOM'suz UTF-8. Set-Content -Encoding UTF8 (PowerShell 5.1) basa BOM koyuyor.
+$hedef = Join-Path $root 'android\app\build.gradle.kts'
+[IO.File]::WriteAllText($hedef, ($sablon -replace "`r?`n", "`r`n"), (New-Object Text.UTF8Encoding($false)))
+Write-Host "  Yazildi: imza + applicationId com.noktapp.garson + targetSdk 35+" -ForegroundColor Green
 
 # --- 3. paketi uret --------------------------------------------------------
 Step 3 "Play Store paketi uretiliyor (.aab) - birkac dakika"
@@ -204,6 +166,6 @@ Write-Host "  Dosya : $(Resolve-Path $aab)"
 Write-Host "  Surum : $v"
 Write-Host "  Boyut : $mb MB"
 Write-Host ""
-Write-Host "  Play Console > Uygulama olustur > Uretim (veya Kapali test) > Yeni surum" -ForegroundColor Yellow
+Write-Host "  Play Console > Uygulama olustur > Kapali test > Yeni surum" -ForegroundColor Yellow
 Write-Host "  bu .aab dosyasini yukleyin." -ForegroundColor Yellow
 Start-Process explorer.exe "/select,`"$((Resolve-Path $aab).Path)`""
