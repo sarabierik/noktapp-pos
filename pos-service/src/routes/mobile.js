@@ -53,10 +53,43 @@ async function mobileAuth(req, res, next) {
   next();
 }
 
+/*
+ * THE TILL SAYS WHERE IT IS.
+ *
+ * A phone that has been told one address keeps calling it, and a PC changes
+ * address constantly - a cable pulled out, a different wifi, a router that
+ * hands out a new lease overnight. A restaurant that moves from 192.168.1.x to
+ * 192.168.2.x breaks every handset until somebody types the new number into
+ * each one, which is not a thing a waiter can be asked to do.
+ *
+ * So every answer carries the addresses this machine is currently reachable on,
+ * ranked. The phone keeps that list and tries all of them. Nobody types
+ * anything, and the day the PC moves, the first successful call - over the LAN
+ * or through the relay - teaches the phone where the till went.
+ */
 r.get('/ping', wrap(async (req, res) => {
   const lic = await db.one('SELECT client_id, company_name FROM np_licence WHERE id=1');
   ok(res, { product: 'noktapp-pos', version: process.env.NOKTAPP_VERSION || '2.0.0',
-    client_id: lic ? lic.client_id : null, name: lic ? lic.company_name : null });
+    client_id: lic ? lic.client_id : null, name: lic ? lic.company_name : null,
+    addresses: lan.addresses() });
+}));
+
+/*
+ * EsLESTIRME, RELAY UZERINDEN.
+ *
+ * Above mobileAuth on purpose: a phone that is pairing has no token yet, which
+ * is the whole point of the exercise. And under /api/mobile rather than
+ * /api/auth because that is the only prefix the cloud relay will carry - which
+ * is what lets a waiter pair from his own home, on his own data connection,
+ * from a photograph of the till's screen taken ten minutes ago.
+ *
+ * QR ONLY here. See src/eslestirme.js for why the six digit code is not
+ * allowed through a door the internet can knock on.
+ */
+r.post('/pair', wrap(async (req, res) => {
+  try {
+    ok(res, await require('../eslestirme').pair(req.body || {}, { ip: req.ip, qrOnly: true }));
+  } catch (e) { fail(res, e.message, e.status || 400); }
 }));
 
 r.use(mobileAuth);
@@ -67,6 +100,10 @@ const can = (perm) => auth.requirePerm(perm);
 r.get('/bootstrap', wrap(async (req, res) => {
   const plan = await orders.tablePlan(req.clientId);
   ok(res, {
+    /* bootstrap is what a phone calls the moment it opens, including over the
+       relay from outside the building - so it is the surest place to hand back
+       where this machine can be reached today. See the note on /ping. */
+    addresses: lan.addresses(),
     me: { id: req.auth.uid, name: req.auth.name, role: req.auth.role },
     menu: await catalog.menu(req.clientId),
     zones: plan.zones, tables: plan.tables,

@@ -545,11 +545,22 @@ Screens.add({
       $('#fpFound').innerHTML = '<p class="muted" style="margin:8px 0 0;font-size:12.5px">'
         + 'Ağdaki yazıcılar aranıyor, birkaç saniye sürebilir…</p>';
       try {
-        const r = await api('POST', '/api/receipt/printers/scan', {});
+        const r = await api('POST', '/api/receipt/printers/scan',
+          this._fisSubnet ? { subnet: this._fisSubnet } : {});
+        /* What was looked at, always - "bulunamadı" alone has twice been read
+           as "bu özellik bozuk" when the truth was that the printer sits on a
+           network this PC is no longer plugged into. */
+        const where = `<p class="muted" style="margin:8px 0 0;font-size:12.5px">
+            Taranan ağ: <span class="mono">${esc(r.subnets.join(', ') || '—')}</span>
+            ${r.note ? `<br>${esc(r.note)}` : ''}</p>
+          <div class="row" style="gap:8px;margin-top:8px">
+            <input class="input mono" id="fpSubnet" placeholder="192.168.1.0"
+              value="${esc(this._fisSubnet || '')}" style="flex:1">
+            <button class="btn btn--ghost btn--sm" id="fpSubnetGo" style="flex:none">Bu ağı tara</button>
+          </div>`;
         if (!r.found.length) {
           $('#fpFound').innerHTML = `<p class="muted" style="margin:8px 0 0;font-size:12.5px">
-            ${esc(r.subnets.join(', ') || 'ağ')} tarandı, yazıcı bulunamadı.
-            Yazıcının açık ve aynı ağa bağlı olduğundan emin olun.</p>`;
+            Yazıcı bulunamadı. Yazıcının açık ve aynı ağa bağlı olduğundan emin olun.</p>${where}`;
         } else {
           $('#fpFound').innerHTML = `<div class="row" style="gap:6px;flex-wrap:wrap;margin-top:8px">
             ${r.found.map(f => `<button class="chip${f.sure ? '' : ' chip--warn'}" data-ip="${esc(f.address)}"
@@ -557,12 +568,20 @@ Screens.add({
               ${f.name ? `<span class="muted mono">${esc(f.address)}</span>` : ''}</button>`).join('')}
           </div>
           <p class="muted" style="margin:8px 0 0;font-size:12.5px">
-            ${r.found.length} cihaz bulundu. Seçmek için üstüne dokunun.</p>`;
+            ${r.found.length} cihaz bulundu. Seçmek için üstüne dokunun.</p>${where}`;
           $$('#fpFound [data-ip]').forEach(b => b.onclick = () => {
             $('#fpAddr').value = b.dataset.ip;
             $('#fpType').value = 'network'; relabel();
           });
         }
+        /* Any other block, typed once. A restaurant with a printer VLAN or a
+           till that has just moved router needs to say where to look, and
+           "192.168.1.0" is a thing the person standing there can find out. */
+        const go = $('#fpSubnetGo');
+        if (go) go.onclick = () => {
+          this._fisSubnet = ($('#fpSubnet').value || '').trim() || null;
+          $('#fpScan').onclick();
+        };
       } catch (e) {
         $('#fpFound').innerHTML = `<div class="alert alert--error" style="margin-top:8px">${esc(e.message)}</div>`;
       }

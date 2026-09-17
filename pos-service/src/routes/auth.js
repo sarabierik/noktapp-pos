@@ -101,19 +101,8 @@ r.post('/pair-code', auth.requireAuth, auth.requirePerm('user.manage'), wrap(asy
  * way it arrives.
  */
 r.post('/pair', wrap(async (req, res) => {
-  const { code, qr_token, device_id, device_name, platform, app_version, username, password } = req.body || {};
   try {
-    const byQr = !!qr_token;
-    const pairing = byQr
-      ? await lan.redeemQrToken(qr_token, { device_id, device_name, platform })
-      : await lan.redeemPairCode(code, { device_id, device_name, platform });
-    const staff = (byQr && pairing.for_user_id)
-      ? await auth.staffSession(pairing.client_id, pairing.for_user_id)
-      : await auth.staffLogin(pairing.client_id, username, password, req.ip);
-    const tokens = await lan.issueDeviceToken(pairing.client_id, staff.user, { device_id, device_name, platform, app_version });
-    const jwtToken = await auth.issueToken(
-      { cid: pairing.client_id, uid: staff.user.id, role: staff.user.role, name: staff.user.display_name, kind: 'mobile' }, '30d');
-    ok(res, { ...tokens, jwt: jwtToken, user: staff.user, perms: staff.perms, client_id: pairing.client_id });
+    ok(res, await require('../eslestirme').pair(req.body || {}, { ip: req.ip }));
   } catch (e) { fail(res, e.message, e.status || 400); }
 }));
 

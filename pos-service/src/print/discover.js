@@ -31,24 +31,49 @@ const PORTS = [
   { port: 631, kind: 'ipp', sure: false },
 ];
 
+/** The /24 an address sits in. */
+function slashTwentyFour(ip) {
+  return String(ip).split('.').slice(0, 3).join('.');
+}
+
 /**
  * The IPv4 /24s this machine sits on.
  *
- * Only /24 and smaller: a /16 is 65k probes and a restaurant is never on one.
- * Loopback, link-local (169.254) and virtual adapters with no netmask are out.
+ * ONE PER ADDRESS, AND THE MASK IS NOT ALLOWED TO VETO IT.
+ *
+ * This used to skip any interface whose mask was wider than /24 - "a /16 is
+ * 65k probes and a restaurant is never on one". Both halves were wrong. A
+ * restaurant absolutely is on one: an office or a hotel hands out 172.16.x.x
+ * as a /16 and a shared building network does the same, and on those machines
+ * localSubnets() returned an empty list, scan() answered "found: []" in under
+ * a millisecond, and the screen said "ag tarandi, yazici bulunamadi" - a
+ * sentence that was not true, because nothing had been scanned at all. That is
+ * the worst kind of bug this program can have: it reports a fact about the
+ * restaurant's network that it never went and looked at.
+ *
+ * A wide mask does not mean we must sweep it all. It means we sweep the /24
+ * the PC itself is standing in, which is where the printer on the same switch
+ * is, and we SAY SO (`wide`) so the screen can offer to try another block.
+ *
+ * Loopback and link-local (169.254 - an address that means "no DHCP answered")
+ * are still out; they lead nowhere by definition.
  */
 function localSubnets() {
+  return subnetsFrom(os.networkInterfaces());
+}
+
+/** The same thing over a supplied interface table, so it can be tested. */
+function subnetsFrom(ifaces) {
   const out = [];
-  const ifaces = os.networkInterfaces();
   for (const [name, addrs] of Object.entries(ifaces || {})) {
     for (const a of addrs || []) {
       if (a.family !== 'IPv4' && a.family !== 4) continue;
       if (a.internal) continue;
       if (!a.address || a.address.startsWith('169.254.')) continue;
       const bits = Number(String(a.cidr || '').split('/')[1] || 0);
-      if (bits && bits < 24) continue;             // too wide to sweep politely
-      const base = a.address.split('.').slice(0, 3).join('.');
-      if (!out.some(x => x.base === base)) out.push({ base, self: a.address, iface: name });
+      const base = slashTwentyFour(a.address);
+      if (out.some(x => x.base === base)) continue;
+      out.push({ base, self: a.address, iface: name, bits: bits || null, wide: !!bits && bits < 24 });
     }
   }
   return out;
@@ -82,22 +107,49 @@ function reverseName(ip, timeoutMs = 400) {
 }
 
 /**
- * Sweep the local /24(s).
+ * Sweep the local /24(s), plus any block the caller names.
  *
- * `concurrency` is what keeps this bearable on a till: 64 sockets in flight
- * finishes 254 hosts in about four seconds at a 500 ms timeout, and a thermal
- * printer on the same switch answers in under 50.
+ * `extra` is how a printer that stayed behind on the old network is still
+ * found: the caller passes the addresses already saved against this till, we
+ * take their /24s, and a machine that has since moved from 192.168.1.x to
+ * 192.168.2.x still gets told "your printer is over there, on the other
+ * network" instead of a blank list.
+ *
+ * The three ports are knocked TOGETHER, not one after the other. A dead
+ * address on a LAN does not refuse a connection - there is nobody there to
+ * refuse it, the ARP simply goes unanswered - so every probe to it costs the
+ * full timeout. Sequentially that was three timeouts per empty address; in
+ * parallel it is one, which is what buys the longer fuse below.
+ *
+ * `timeoutMs` defaults to 900, not the 500 it was. A thermal printer that has
+ * been idle on wifi since the morning does not answer a first SYN in half a
+ * second - the radio has to wake, and 500ms was losing exactly the printers
+ * this feature exists to find, on exactly the networks where typing the IP by
+ * hand is hardest.
  */
-async function scan({ subnet = null, timeoutMs = 500, concurrency = 64, ports = null } = {}) {
+async function scan({ subnet = null, timeoutMs = 900, concurrency = 64, ports = null, extra = [] } = {}) {
   const started = Date.now();
   const nets = subnet
-    ? [{ base: String(subnet).split('.').slice(0, 3).join('.'), self: null, iface: 'manuel' }]
+    ? [{ base: slashTwentyFour(subnet), self: null, iface: 'manuel', bits: 24, wide: false }]
     : localSubnets();
-  if (!nets.length) return { subnets: [], found: [], scanned: 0, ms: 0, note: 'ag bulunamadi' };
 
-  const wanted = ports && ports.length
-    ? PORTS.filter(p => ports.includes(p.port))
-    : PORTS;
+  /* Blocks we were told about - the saved printers' own networks. */
+  if (!subnet) {
+    for (const raw of extra || []) {
+      const ip = String(raw || '').split(':')[0].trim();
+      if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) continue;
+      const base = slashTwentyFour(ip);
+      if (nets.some(n => n.base === base)) continue;
+      nets.push({ base, self: null, iface: 'kayitli', bits: 24, wide: false, remote: true });
+    }
+  }
+
+  if (!nets.length) {
+    return { subnets: [], found: [], scanned: 0, ms: Date.now() - started,
+      note: 'Bu bilgisayarda taranabilecek bir ag baglantisi bulunamadi.' };
+  }
+
+  const wanted = ports && ports.length ? PORTS.filter(p => ports.includes(p.port)) : PORTS;
 
   const targets = [];
   for (const n of nets) {
@@ -115,24 +167,14 @@ async function scan({ subnet = null, timeoutMs = 500, concurrency = 64, ports = 
       const idx = cursor++;
       if (idx >= targets.length) return;
       const ip = targets[idx];
-      /*
-       * 9100 first and alone: if it answers, the device can be printed to and
-       * the other two ports tell us nothing more. Only when it does not do we
-       * spend two more sockets asking whether this is a print server of some
-       * other kind.
-       */
-      const raw = wanted.find(p => p.port === 9100);
-      if (raw && await knock(ip, 9100, timeoutMs)) {
-        found.set(ip, { ip, port: 9100, kind: 'raw', sure: true });
-        continue;
-      }
-      for (const p of wanted) {
-        if (p.port === 9100) continue;
-        if (await knock(ip, p.port, timeoutMs)) {
-          found.set(ip, { ip, port: p.port, kind: p.kind, sure: false });
-          break;
-        }
-      }
+      const hits = await Promise.all(wanted.map(p => knock(ip, p.port, timeoutMs)));
+      const i = hits.findIndex(Boolean);
+      if (i < 0) continue;
+      /* 9100 wins when more than one answers: it is the only one we can
+         actually print to, so it is the one the address field should get. */
+      const raw = wanted.findIndex(p => p.port === 9100);
+      const pick = (raw >= 0 && hits[raw]) ? wanted[raw] : wanted[i];
+      found.set(ip, { ip, port: pick.port, kind: pick.kind, sure: pick.sure });
     }
   }
   await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, 128)) }, worker));
@@ -144,9 +186,21 @@ async function scan({ subnet = null, timeoutMs = 500, concurrency = 64, ports = 
 
   const ms = Date.now() - started;
   log.info('print', 'network scan', { subnets: nets.map(n => n.base), found: list.length, ms });
+
+  const wide = nets.filter(n => n.wide);
   return {
     subnets: nets.map(n => n.base + '.0/24'),
     scanned: targets.length,
+    /*
+     * What was actually looked at, in the owner's words. The screen prints
+     * this under the result, because "yazici bulunamadi" on its own has twice
+     * been read as "this feature is broken" when the truth was that the
+     * printer was on a network this PC is no longer connected to.
+     */
+    note: wide.length
+      ? `${wide.map(n => n.base + '.0/24').join(', ')} tarandi. Bu ag /${wide[0].bits} genisliginde, `
+        + 'yani yazici baska bir blokta olabilir - biliyorsaniz adresini elle yazin.'
+      : null,
     found: list.map(f => ({
       ip: f.ip,
       port: f.port,
@@ -159,4 +213,4 @@ async function scan({ subnet = null, timeoutMs = 500, concurrency = 64, ports = 
   };
 }
 
-module.exports = { scan, localSubnets, knock };
+module.exports = { scan, localSubnets, subnetsFrom, knock };

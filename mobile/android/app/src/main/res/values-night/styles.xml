@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app itself is light in every case - the till is light, and a waiter
+     moving between the two should not meet two different products. Only the
+     launch plate is repeated here so a night-mode phone does not flash black
+     before it. -->
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:statusBarColor">#EA580C</item>
+        <item name="android:navigationBarColor">#EA580C</item>
+    </style>
+    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">?android:colorBackground</item>
+    </style>
+</resources>

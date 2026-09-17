@@ -74,6 +74,18 @@ class Discovery {
   }
 
   /// Ask every address on the local /24 whether it is a NOKTApp till.
+  ///
+  /// IN BATCHES, and this matters more than it looks.
+  ///
+  /// It used to fire all 254 at once with a 700ms connect timeout. A phone is
+  /// not a server: Android throttles that many simultaneous sockets, most of
+  /// the probes never really got sent, and the ones that did had under a second
+  /// to complete. So the sweep reported "no till here" while the till sat on
+  /// the same wifi answering the phone's own browser instantly - and the app
+  /// fell back to whatever stale address it was holding.
+  ///
+  /// Thirty-two at a time, a second and a half each, is about four seconds for
+  /// a whole subnet and it actually finds things.
   static Future<String?> _sweep() async {
     String? ip;
     try {
@@ -81,24 +93,30 @@ class Discovery {
     } catch (_) {}
     if (ip == null || !ip.contains('.')) return null;
     final base = ip.substring(0, ip.lastIndexOf('.'));
-    final completer = Completer<String?>();
-    var pending = 254;
+    final mine = int.tryParse(ip.substring(ip.lastIndexOf('.') + 1)) ?? 0;
 
-    for (var i = 1; i <= 254; i++) {
-      final candidate = '$base.$i';
-      _ping(candidate).then((ok) {
-        if (ok && !completer.isCompleted) completer.complete('http://$candidate:$port');
-        if (--pending == 0 && !completer.isCompleted) completer.complete(null);
-      });
+    /* Nearest-first. A till is far more often .1 to .50 - a router hands the
+       PC an early address and the phones arrive later - so the answer usually
+       comes in the first batch or two rather than after all 254. */
+    final order = List<int>.generate(254, (i) => i + 1)
+      ..sort((a, b) => (a - mine).abs().compareTo((b - mine).abs()));
+
+    for (var i = 0; i < order.length; i += 32) {
+      final batch = order.skip(i).take(32).toList();
+      final hits = await Future.wait(
+          batch.map((n) async => await _ping('$base.$n') ? '$base.$n' : null));
+      for (final h in hits) {
+        if (h != null) return 'http://$h:$port';
+      }
     }
-    return completer.future.timeout(const Duration(seconds: 6), onTimeout: () => null);
+    return null;
   }
 
   static Future<bool> _ping(String host) async {
-    final client = HttpClient()..connectionTimeout = const Duration(milliseconds: 700);
+    final client = HttpClient()..connectionTimeout = const Duration(milliseconds: 1500);
     try {
       final req = await client.getUrl(Uri.parse('http://$host:$port/api/mobile/ping'));
-      final res = await req.close().timeout(const Duration(milliseconds: 900));
+      final res = await req.close().timeout(const Duration(milliseconds: 1500));
       if (res.statusCode != 200) return false;
       final body = await res.transform(utf8.decoder).join();
       return body.contains('noktapp-pos');

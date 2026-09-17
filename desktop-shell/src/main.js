@@ -17,6 +17,7 @@ const path = require('path');
 const fs = require('fs');
 const net = require('net');
 const http = require('http');
+const https = require('https');
 
 const isDev = !app.isPackaged;
 const ROOT = isDev ? path.join(__dirname, '..', '..') : process.resourcesPath;
@@ -122,7 +123,6 @@ function ensureConfigFile(password) {
  * inside the installer for a step that runs once.
  */
 function downloadTo(url, target, onProgress) {
-  const https = require('https');
   return new Promise((resolve, reject) => {
     const go = (u, depth) => {
       if (depth > 5) return reject(new Error('Cok fazla yonlendirme'));
@@ -516,11 +516,83 @@ function fatal(message, detail) {
 }
 
 /* ------------------------------ updates ----------------------------- */
+/*
+ * WHY THIS IS MORE THAN autoUpdater.checkForUpdates().
+ *
+ * The feed is https://pos.noktapp.com/indir, on shared hosting. Whoever can
+ * write into that folder writes BOTH the installer and the latest.yml that
+ * describes it, so the sha512 in the manifest proves only that the download
+ * arrived intact - never who made it. The shell installs perMachine and runs
+ * elevated. One compromised set of hosting credentials would therefore have
+ * meant administrator-level code on every till we have ever sold, within six
+ * hours, arriving through a dialog the restaurant has been trained to accept.
+ *
+ * So the manifest is signed on the build machine with a key the web server has
+ * never seen, and this is the order:
+ *
+ *   1. fetch latest.yml and latest.yml.imza ourselves
+ *   2. verify the signature over the yml bytes - refuse everything if it fails
+ *   3. check the version electron-updater found matches the signed one, so a
+ *      host serving two different answers gets caught rather than believed
+ *   4. only then download
+ *   5. hash the downloaded installer and compare it to the SIGNED manifest
+ *   6. only then offer to install
+ *
+ * A web host with no private key can serve anything it likes. No till runs it.
+ * The Authenticode certificate is a separate purchase for a separate problem
+ * (the SmartScreen warning at first install); it is not what protects this.
+ */
+const { PUBLIC_KEY } = require('./guncelleme-anahtar');
+const dogrula = require('./guncelleme-dogrula');
+
+const FEED_URL = 'https://pos.noktapp.com/indir';
+
+function fetchText(url, timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { timeout: timeoutMs }, res => {
+      if (res.statusCode !== 200) {
+        res.resume();
+        return reject(new Error(url + ' -> HTTP ' + res.statusCode));
+      }
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', c => { body += c; if (body.length > 512 * 1024) req.destroy(); });
+      res.on('end', () => resolve(body));
+    });
+    req.on('timeout', () => req.destroy(new Error('zaman asimi: ' + url)));
+    req.on('error', reject);
+  });
+}
+
+/* Fetched fresh each time and never cached: a manifest that verified an hour
+ * ago says nothing about the one being offered now. */
+async function imzaliManifest() {
+  const yml = await fetchText(FEED_URL + '/latest.yml');
+  const imza = await fetchText(FEED_URL + '/latest.yml.imza');
+  dogrula.imzaDogrula(Buffer.from(yml, 'utf8'), imza, PUBLIC_KEY);
+  return dogrula.manifestOku(yml);
+}
+
 function setupUpdates() {
   if (isDev) return;
+
+  if (!PUBLIC_KEY) {
+    /*
+     * Deliberately louder than a silent no-op, and deliberately not a fallback
+     * to unverified updating. An update nobody checked is worse than no update.
+     */
+    log('updater: DISABLED - no signing key in src/guncelleme-anahtar.js. ' +
+        'Run scripts/anahtar-uret.js and rebuild before publishing releases.');
+    return;
+  }
+
   try {
     const { autoUpdater } = require('electron-updater');
-    autoUpdater.autoDownload = true;
+
+    /* Nothing is fetched until the signature has been checked. This is the
+     * line that turns a silent supply-chain push into a verified one. */
+    autoUpdater.autoDownload = false;
+
     /*
      * PUBLISHING THE PREVIOUS VERSION IS THE ROLLBACK LEVER, AND IT HAS TO WORK.
      *
@@ -528,7 +600,7 @@ function setupUpdates() {
      * Left off, our only answer to a release that breaks the till is to find the
      * bug, fix it, build, sign and publish - with every till in the country on
      * the broken build for however long that takes. Marking the last good
-     * version as güncel does nothing at all: the updater compares, sees a lower
+     * version as guncel does nothing at all: the updater compares, sees a lower
      * number, and stays where it is. There is no second mechanism; nobody is
      * driving to a restaurant with a USB stick.
      *
@@ -537,9 +609,39 @@ function setupUpdates() {
      * start and are additive, so the old build boots on the newer schema. The
      * risk of NOT setting it is a service the vendor cannot stop breaking.
      * This has to be right on the worst day, not the best one.
+     *
+     * A malicious downgrade is not what this buys back any more: an attacker
+     * would have to sign the old manifest, and they cannot.
      */
     autoUpdater.allowDowngrade = true;
-    autoUpdater.on('update-downloaded', async () => {
+
+    let imzali = null;
+
+    autoUpdater.on('update-available', async info => {
+      try {
+        imzali = await imzaliManifest();
+        if (!dogrula.surumEslesiyorMu(imzali, info)) {
+          imzali = null;
+          log('updater: REFUSED - the signed manifest and the update do not agree on the version');
+          return;
+        }
+        log('updater: signature ok for ' + imzali.version + ', downloading');
+        autoUpdater.downloadUpdate().catch(e => log('updater: download failed: ' + e.message));
+      } catch (e) {
+        imzali = null;
+        log('updater: REFUSED - ' + e.message);
+      }
+    });
+
+    autoUpdater.on('update-downloaded', async e => {
+      try {
+        if (!imzali) throw new Error('imzali manifest yok');
+        dogrula.kurulumDosyasiDogrula(e.downloadedFile, imzali);
+      } catch (err) {
+        log('updater: REFUSED after download - ' + err.message);
+        try { fs.unlinkSync(e.downloadedFile); } catch { /* best effort */ }
+        return;
+      }
       const r = await dialog.showMessageBox(mainWin, {
         type: 'info', buttons: ['Sonra', 'Simdi guncelle'], defaultId: 1,
         title: 'Guncelleme hazir', message: 'Yeni bir NoktApp POS surumu indirildi.',
@@ -547,6 +649,7 @@ function setupUpdates() {
       });
       if (r.response === 1) { quitting = true; autoUpdater.quitAndInstall(); }
     });
+
     autoUpdater.on('error', e => log('updater: ' + e.message));
     setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 20000);
     setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 3600000);

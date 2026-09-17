@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- the plate behind the adaptive icon: the brand gradient, not a flat fill,
+     so the launcher's own mask still shows the same face as the legacy icon -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:startColor="#FFA040"
+        android:endColor="#EA580C"
+        android:angle="315"
+        android:type="linear"/>
+</shape>

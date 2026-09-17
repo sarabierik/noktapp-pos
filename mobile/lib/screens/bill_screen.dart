@@ -221,6 +221,67 @@ class _BillScreenState extends State<BillScreen> {
         SnackBar(content: Text('$e'), backgroundColor: const Color(0xFFB42318)));
   }
 
+  /*
+   * NAMING A BILL.
+   *
+   * A table with four bills on it is four people, and "A, B, C, D" is not how
+   * a waiter holds them in his head - "Ahmet", "pencere kenari", "kirmizi
+   * mont" is. The letters are what the till assigns so that something exists
+   * to print; the name is what stops the wrong hesap reaching the wrong guest.
+   *
+   * The endpoint has been there all along. What was missing was anywhere to
+   * type into, so a waiter carrying four open bills had four letters and his
+   * own memory.
+   */
+  /// "S12 · Ahmet" once it has a name, "S12 · Hesap" before.
+  String _title() {
+    final l = '${order?['bill_label'] ?? ''}'.trim();
+    return l.isEmpty ? '${widget.tableName} · Hesap' : '${widget.tableName} · $l';
+  }
+
+  Future<void> _rename() async {
+    final o = order;
+    if (o == null) return;
+    final c = TextEditingController(text: '${o['bill_label'] ?? ''}');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Adisyon adi'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: c,
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+            maxLength: 24,
+            decoration: const InputDecoration(
+              hintText: 'Ahmet, pencere kenari, kirmizi mont...',
+              counterText: '',
+            ),
+            onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+          ),
+          const SizedBox(height: 6),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text('Bu isim fiste ve kasada gorunur. Bos birakirsan harf (A, B, C) kalir.',
+                style: TextStyle(fontSize: 12, color: NokTheme.ink3)),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgec')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, c.text.trim()),
+              child: const Text('Kaydet')),
+        ],
+      ),
+    );
+    if (name == null) return;
+    try {
+      await Api.instance.setLabel(widget.orderId, name);
+      if (!mounted) return;
+      _load();
+    } catch (e) { _oops(e); }
+  }
+
   /// Every row here is a permission. What the waiter may not do is shown
   /// greyed with the reason, rather than hidden - a waiter who cannot find
   /// "masa taşı" assumes the handset lacks it and walks to the till anyway.
@@ -262,11 +323,64 @@ class _BillScreenState extends State<BillScreen> {
     );
   }
 
+  /// One action: the icon above its word, so the word has the whole column and
+  /// never has to break. 62 high - a thumb's worth - and a single line always.
+  Widget _action(IconData icon, String label, VoidCallback onTap, {bool primary = false}) {
+    final fg = primary ? Colors.white : NokTheme.ink;
+    return Material(
+      color: primary ? NokTheme.orange : Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          height: 62,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: primary ? null : Border.all(color: const Color(0xFFD4D4D8)),
+          ),
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(icon, size: 21, color: primary ? Colors.white : NokTheme.orangeDark),
+            const SizedBox(height: 4),
+            Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: fg)),
+          ]),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('${widget.tableName} · Hesap'),
+        /*
+         * The title is the control. A waiter looking for "where do I name this
+         * bill" looks at the name, so that is what has to be pressable - and it
+         * carries a small pencil so that it looks pressable rather than being a
+         * secret.
+         */
+        title: InkWell(
+          onTap: order == null || !Session.instance.canOrder ? null : _rename,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Flexible(
+                child: Text(
+                  _title(),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (order != null && Session.instance.canOrder) ...[
+                const SizedBox(width: 6),
+                const Icon(Icons.edit_outlined, size: 16, color: NokTheme.ink3),
+              ],
+            ]),
+          ),
+        ),
         actions: [
           IconButton(
               tooltip: 'İşlemler',
@@ -280,22 +394,34 @@ class _BillScreenState extends State<BillScreen> {
               ? Center(child: Padding(padding: const EdgeInsets.all(28),
                   child: Text(error!, textAlign: TextAlign.center, style: const TextStyle(color: NokTheme.ink2))))
               : _bill(),
+      /*
+       * THE ACTION BAR, AND WHY IT IS NOT THREE .icon BUTTONS IN A ROW.
+       *
+       * It was. On a 360dp handset each one got about a hundred pixels, the
+       * icon took a third of that, and Material wrapped what was left - so a
+       * waiter was offered "Gönd / er", "E- / posta" and "Yazd / ır". Three
+       * buttons, none of them readable, on the screen he uses most.
+       *
+       * Icon over label fixes it outright: the full width of the column is
+       * available to the word, nothing wraps, and the taller shape is a better
+       * target for a thumb on the move. Yazdır stays filled because it is the
+       * one that ends the job.
+       */
       bottomNavigationBar: order == null ? null : SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(14),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: NokTheme.line)),
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
           child: Row(children: [
             if (Session.instance.canOrder) ...[
-              Expanded(child: OutlinedButton.icon(
-                  onPressed: _send,
-                  icon: const Icon(Icons.send_outlined),
-                  label: const Text('Gönder'))),
+              Expanded(child: _action(Icons.send_outlined, 'Mutfağa', _send)),
               const SizedBox(width: 8),
             ],
-            Expanded(child: OutlinedButton.icon(
-                onPressed: _mail, icon: const Icon(Icons.mail_outline), label: const Text('E-posta'))),
+            Expanded(child: _action(Icons.mail_outline, 'E-posta', _mail)),
             const SizedBox(width: 8),
-            Expanded(child: FilledButton.icon(
-                onPressed: _print, icon: const Icon(Icons.print_outlined), label: const Text('Yazdır'))),
+            Expanded(child: _action(Icons.print_outlined, 'Yazdır', _print, primary: true)),
           ]),
         ),
       ),

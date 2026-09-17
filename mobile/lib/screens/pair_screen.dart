@@ -40,6 +40,12 @@ class _PairScreenState extends State<PairScreen> {
     if (qr == null || !mounted) return;
 
     setState(() { _busy = true; _status = 'Kasaya baglaniliyor...'; });
+    /* If the till is not on this wifi the token goes through the cloud, and
+       that takes a few seconds longer - so the screen says so rather than
+       looking frozen. */
+    Future.delayed(const Duration(seconds: 4), () {
+      if (mounted && _busy) setState(() => _status = 'Ayni agda degil - internet uzerinden baglaniliyor...');
+    });
     try {
       await Api.instance.pairWithQr(qr, phoneName: _name.text.trim());
       if (!mounted) return;
@@ -57,7 +63,8 @@ class _PairScreenState extends State<PairScreen> {
         _busy = false;
         _status = '';
         _error = msg.contains('Kasa bulunamadi')
-            ? 'Karekod okundu ama kasaya ulasilamadi. Telefon restoranin wifi agina bagli mi?'
+            ? 'Karekod okundu ama kasaya ulasilamadi. Kasa bilgisayari acik mi? '
+              'Ayni agda degilseniz kasanin internete bagli olmasi gerekir.'
             : msg;
       });
     } finally {

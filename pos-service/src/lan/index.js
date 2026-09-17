@@ -100,7 +100,7 @@ async function createPairCode(clientId, userId = null, forUserId = null) {
     'INSERT INTO np_mobile_pairings (client_id, pair_code, qr_token, user_id, for_user_id, expires_at, created_at)' +
     ' VALUES (?,?,?,?,?, DATE_ADD(NOW(), INTERVAL 10 MINUTE), NOW())',
     [clientId, code, qrToken, userId, forUserId || null]);
-  return { code, qr_token: qrToken, for_user_id: forUserId || null,
+  return { code, qr_token: qrToken, for_user_id: forUserId || null, client_id: clientId,
     expires_in: 600, ips: localIps(), addresses: addresses(), port: config.port };
 }
 

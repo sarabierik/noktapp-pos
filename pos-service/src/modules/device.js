@@ -425,6 +425,19 @@ function pairPayload(p) {
   const addrs = p.addresses && p.addresses.length ? p.addresses : addresses();
   const q = ['b=' + encodeURIComponent(addrs[0] || ''), 't=' + p.qr_token];
   if (addrs.length > 1) q.push('a=' + encodeURIComponent(addrs.slice(1, 4).join(',')));
+  /*
+   * `c` IS THE ONE THAT MAKES THIS WORK OUTSIDE THE BUILDING.
+   *
+   * With only `b` and `a` the symbol is a list of private addresses, and a
+   * phone that is not on that Wi-Fi can do nothing with any of them - which
+   * meant a waiter could only ever be paired standing next to the till, on the
+   * right network, with a laptop-shaped problem in the middle of service. With
+   * the tenant number in the symbol the phone can hand the token to the cloud
+   * relay instead and be paired from anywhere; the LAN addresses stay first
+   * because they are faster and need no internet, and become an optimisation
+   * rather than a requirement.
+   */
+  if (p.client_id) q.push('c=' + encodeURIComponent(String(p.client_id)));
   return 'noktapp://pair?' + q.join('&');
 }
 
@@ -479,6 +492,7 @@ async function activePairCode(clientId) {
     ? await db.one('SELECT id, display_name, role FROM users WHERE id=? AND client_id=?', [row.for_user_id, clientId])
     : null;
   return decorate({ code: row.pair_code, qr_token: row.qr_token, expires_at: row.expires_at,
+    client_id: clientId,
     seconds_left: Math.max(0, Number(row.secs)), addresses: addresses(),
     for_user: staff ? { id: staff.id, name: staff.display_name, role: staff.role } : null });
 }

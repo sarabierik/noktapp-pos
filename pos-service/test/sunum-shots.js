@@ -38,7 +38,12 @@ const OUT = '/home/claude/sunum/img';
   await page.waitForSelector('.pinpad', { timeout: 20000 });
   await shot('00-pinpad');
 
-  for (const d of ['4', '3', '2', '1']) await page.click(`.pinpad button[data-k="${d}"]`);
+  /* Which PIN opens the till depends on which fixture is loaded: the bench's
+   * own manager is 4321, the seven-year demo restaurant's owner is 1234.
+   * Hard-coding one of them means this script only ever photographs one of
+   * the two, and fails at the pad on the other. */
+  const PIN = process.env.DEMO_PIN || '4321';
+  for (const d of PIN.split('')) await page.click(`.pinpad button[data-k="${d}"]`);
   await page.waitForSelector('.nav__item', { timeout: 20000 });
 
   const pages = await page.evaluate(() => PAGES.filter(p => !p.hidden).map(p => p.id));

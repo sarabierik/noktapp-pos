@@ -202,9 +202,22 @@ r.delete('/printers/:id', canPrinters, guard(async (req, res) => {
  */
 r.post('/printers/scan', canPrinters, guard(async (req, res) => {
   const discover = require('../print/discover');
+  /*
+   * The blocks the saved printers live in go into the sweep beside the one
+   * this PC is on. A till that has moved network - a new router, a move to
+   * the office, a hotel that renumbered - otherwise reports "yazici
+   * bulunamadi" about a printer that is sitting there switched on, because
+   * nobody thought to tell it to look at 192.168.1.x any more.
+   */
+  let extra = [];
+  try {
+    const saved = await require('../modules/settings').listPrinters(req.clientId);
+    extra = (saved.printers || []).map(p => p.ip_address).filter(Boolean);
+  } catch (_) { extra = []; }
   const out = await discover.scan({
     subnet: req.body && req.body.subnet ? String(req.body.subnet) : null,
-    timeoutMs: Math.min(Math.max(Number((req.body || {}).timeout_ms) || 500, 120), 2000),
+    timeoutMs: Math.min(Math.max(Number((req.body || {}).timeout_ms) || 900, 120), 2500),
+    extra,
   });
   ok(res, out);
 }));

@@ -1,0 +1,93 @@
+name: Kurulum dosyasi (Windows setup.exe)
+
+# ---------------------------------------------------------------------------
+# WHY THIS EXISTS.
+#
+# The installer was built by hand, on one laptop, by whoever was sitting at it.
+# That is a single point of failure for the only artefact customers ever touch:
+# if that machine is wiped, or is in the wrong branch, or has a half-finished
+# vendor\mariadb folder from a previous experiment, the setup.exe a restaurant
+# installs is not the code in this repository - and nobody can tell, because
+# the only record of how it was built is somebody's memory of it.
+#
+# Here it is built from a clean checkout of a named commit, on a clean Windows
+# runner, with the MariaDB engine fetched fresh, and the result is downloadable
+# with its sha512 printed beside it. Same inputs, same output, every time.
+#
+# Run it from the Actions tab: "Run workflow". The .exe lands under Artifacts.
+# ---------------------------------------------------------------------------
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  windows-setup:
+    name: NoktAppPOS-Setup.exe
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Which version are we building
+        shell: pwsh
+        run: |
+          $v = (Get-Content desktop-shell/package.json -Raw | ConvertFrom-Json).version
+          Write-Host "NOKTApp POS $v"
+          "SURUM=$v" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # ~90 MB, and the installer carries it inside itself so a restaurant that
+      # installs the till needs no database engine of its own and no internet.
+      - name: MariaDB motoru
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File installer/prepare-mariadb.ps1
+
+      # --omit=dev on purpose: whatever lands here is copied verbatim into the
+      # customer's Program Files by extraResources. Test and lint packages have
+      # no business on a till.
+      - name: Servis bagimliliklari
+        run: npm ci --omit=dev --no-audit --no-fund
+        working-directory: pos-service
+
+      # npm install, not npm ci: the shell has no package-lock.json in the
+      # repository, and `npm ci` refuses to run without one. Two dependencies,
+      # both pinned with a caret, and the build prints what it resolved.
+      - name: Kabuk bagimliliklari
+        run: npm install --no-audit --no-fund
+        working-directory: desktop-shell
+
+      - name: Kurulum dosyasi
+        run: npx electron-builder --win nsis --config electron-builder.yml --publish never
+        working-directory: desktop-shell
+
+      # electron-updater compares the base64 form, Get-FileHash returns hex.
+      # Printed here so publishing a version never needs a second tool.
+      - name: Dosya ve sha512
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist -Filter *.exe | Select-Object -First 1
+          if (-not $exe) { throw 'Kurulum dosyasi olusmadi' }
+          $hex = (Get-FileHash $exe.FullName -Algorithm SHA512).Hash
+          $b = New-Object byte[] ($hex.Length / 2)
+          for ($i = 0; $i -lt $hex.Length; $i += 2) { $b[$i/2] = [Convert]::ToByte($hex.Substring($i,2),16) }
+          Write-Host ""
+          Write-Host ("  Dosya : " + $exe.Name)
+          Write-Host ("  Boyut : {0:N0} MB" -f ($exe.Length / 1MB))
+          Write-Host ("  sha512: " + [Convert]::ToBase64String($b))
+          Write-Host ""
+          Write-Host "  pos.noktapp.com/indir/ adresine yukleyin, sonra panelden yeni surumu yayinlayin."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: NoktAppPOS-Setup-${{ env.SURUM }}
+          path: |
+            dist/*.exe
+            dist/latest.yml
+          retention-days: 30
+          if-no-files-found: error

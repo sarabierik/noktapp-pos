@@ -79,6 +79,16 @@ FAILED=0
 # this line would be running on a customer's machine at all.
 printf '%-13s ' motor
 if node "$ROOT/../desktop-shell/test/motor.js" 2>&1 | tail -1; then :; else FAILED=1; fi
+# The update channel, for the same reason and one step further: this is the one
+# path where being wrong means administrator code on every till we have sold.
+printf '%-13s ' guncelleme
+if node "$ROOT/../desktop-shell/test/guncelleme.js" 2>&1 | tail -3; then :; else FAILED=1; fi
+# Printer discovery: sockets and an interface table, no database and no server,
+# so it belongs up here with the other two. It is in the suite because the bug
+# it covers made the till report a fact about the restaurant's network that it
+# had never gone and looked at.
+printf '%-13s ' yazici-tarama
+if node "$ROOT/test/yazici-tarama.js" 2>&1 | tail -1; then :; else FAILED=1; fi
 # geri is LAST and has to stay last: it is the only suite that drops and
 # reloads the whole database, several times. Anything after it would be running
 # against whichever dump its final restore put back.

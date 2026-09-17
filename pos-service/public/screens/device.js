@@ -297,8 +297,13 @@ Screens.add({
               <div class="pair__lead">Telefondaki <b>NOKTApp Garson</b> uygulamasını açın,
                 <b>"Karekodu okut"</b> deyin ve bu kareyi gösterin.</div>
               <p class="muted" style="font-size:13.5px;margin:10px 0 14px">
-                Kod ${who} üretildi. Telefon ve kasa <b>aynı Wi-Fi ağında</b> olmalı —
-                internet gerekmez, telefon doğrudan bu bilgisayara yazar.</p>
+                Kod ${who} üretildi. Telefon bu kasayla <b>aynı Wi-Fi ağındaysa</b> bağlantı
+                doğrudan kurulur, internet gerekmez. Değilse — garson evdeyse, telefonu
+                mobil veride ya da misafir ağındaysa — karekod <b>internet üzerinden de</b>
+                çalışır; bunun için bu bilgisayarın internete bağlı olması yeterli.</p>
+              <p class="muted" style="font-size:12.5px;margin:-6px 0 14px">
+                Karekod <b>10 dakika</b> geçerlidir ve <b>tek bir</b> telefon bağlar.
+                Ekran görüntüsünü paylaşmayın.</p>
 
               <div class="pair__code">
                 <div class="pair__codelbl">Kamerası yoksa bu kodu elle yazsın</div>

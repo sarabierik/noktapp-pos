@@ -49,7 +49,11 @@ const { tarayiciAc } = require('./tarayici');
 
   await page.goto(BASE + '/');
   await page.waitForSelector('.pinpad', { timeout: 15000 });
-  for (const d of ['4', '3', '2', '1']) await page.click(`.pinpad button[data-k="${d}"]`);
+  /* 4321 is the user this script creates when the fixture has none. Load the
+   * seven-year demo restaurant instead and it already HAS staff, so nothing
+   * is created and 4321 opens nothing. DEMO_PIN says which one is loaded. */
+  const PIN = process.env.DEMO_PIN || '4321';
+  for (const d of PIN.split('')) await page.click(`.pinpad button[data-k="${d}"]`);
   await page.waitForSelector('.nav__item', { timeout: 15000 });
 
   /** One shot. `open` does whatever is needed to get the thing on screen. */

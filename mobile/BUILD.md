@@ -1,5 +1,33 @@
 # Building the NOKTApp Garson APK on Windows
 
+> ## If Flutter and Android Studio are already installed
+>
+> You do not need steps 1-3. Open a Command Prompt in this folder and run:
+>
+> ```
+> copy android\app\src\main\AndroidManifest.xml AndroidManifest.backup.xml
+> xcopy /E /I /Y android\app\src\main\res res.backup
+> flutter create --org com.noktapp --platforms=android .
+> copy /Y AndroidManifest.backup.xml android\app\src\main\AndroidManifest.xml
+> xcopy /E /I /Y res.backup android\app\src\main\res
+> flutter pub get
+> flutter build apk --release
+> ```
+>
+> Then **uninstall the old app from the phone first** - not an update, remove
+> it - and install the new one:
+>
+> ```
+> adb uninstall com.noktapp.noktapp_garson
+> adb install build\app\outputs\flutter-apk\app-release.apk
+> ```
+>
+> The uninstall matters. It clears the remembered till address and the old
+> pairing, both of which will otherwise survive and send you chasing ghosts.
+>
+> **To check the right build is on the phone**, pair once and look at the till's
+> log: it must say `app_version: 1.3.0`. Anything older is a stale APK.
+
 This is the whole process, starting from a Windows PC with nothing installed on
 it, ending with the app running on a waiter's handheld. Follow it in order.
 
@@ -16,14 +44,17 @@ lib/          the app - all of the Dart code
 assets/       empty for now, but pubspec.yaml expects the folder to exist
 android/app/src/main/AndroidManifest.xml       hand-written, do not lose it
 android/app/src/main/res/xml/network_security_config.xml   ditto
+android/app/src/main/res/mipmap-*/             the NOKTApp launcher icon
+android/app/src/main/res/values/ic_launcher_background.xml  its orange plate
 ios/Runner/Info.plist.additions                notes, superseded by tools/
 tools/ios-izinler.sh                           iOS permission keys, run on the Mac
 pubspec.yaml  the app's name, version and package list
 BUILD-IOS.md  the same process for iPhone, on a Mac
 ```
 
-It does **not** contain the generated Android project - no Gradle files, no
-`MainActivity`, no launcher icons. Those are machine-generated and are created
+It does **not** contain the generated Android project - no Gradle files and no
+`MainActivity`. The launcher icons ARE kept here, because Flutter's generated
+ones are its own blue logo and a waiter should see the NOKTApp mark. Those are machine-generated and are created
 in step 5 with a single command. This is normal for a Flutter project that only
 keeps its own source in version control.
 
@@ -127,11 +158,13 @@ Everything from here on is typed in that window.
 
 This creates the Gradle files, `MainActivity`, and the launcher icons.
 
-**First, make a copy of the two hand-written files**, because this step
-overwrites `AndroidManifest.xml` with a stock one:
+**First, make a copy of the hand-written files**, because this step overwrites
+`AndroidManifest.xml` with a stock one and replaces the launcher icons with
+Flutter's blue default:
 
 ```
 copy android\app\src\main\AndroidManifest.xml AndroidManifest.backup.xml
+xcopy /E /I /Y android\app\src\main\res res.backup
 copy pubspec.yaml pubspec.backup.yaml
 ```
 
@@ -143,11 +176,18 @@ flutter create --org com.noktapp --platforms=android .
 
 (The dot at the end matters - it means "here".)
 
-Then put the hand-written manifest back:
+Then put the hand-written files back:
 
 ```
 copy /Y AndroidManifest.backup.xml android\app\src\main\AndroidManifest.xml
+xcopy /E /I /Y res.backup android\app\src\main\res
 ```
+
+That second line restores the NOKTApp icon - the orange plate with the white
+dot, the same mark as the till - along with `network_security_config.xml`,
+which is what lets the app speak plain HTTP to a PC on the local network. Lose
+either and the build still succeeds, which is what makes it easy to miss: you
+get a blue Flutter icon and an app that cannot reach the till.
 
 And check that `pubspec.yaml` was not changed:
 
