@@ -301,7 +301,26 @@ class _OrderScreenState extends State<OrderScreen> {
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
         child: SafeArea(
           top: false,
-          child: Padding(
+          /*
+           * SCROLLABLE, AND CAPPED.
+           *
+           * This is the sheet that painted the yellow and black hazard bars
+           * across the bottom of the screen - "BOTTOM OVERFLOWED BY 24
+           * PIXELS". A Column inside a bottom sheet takes the height it wants;
+           * when the keyboard came up, the space left was less than the title,
+           * the field, seven chips and two buttons needed, and Flutter drew
+           * its overflow warning over the buttons - which is the app showing a
+           * waiter a developer's error message in the middle of service.
+           *
+           * The content scrolls now and the sheet never asks for more than 80%
+           * of what is left above the keyboard, so there is nothing to
+           * overflow on any handset, in any language, at any font size.
+           */
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(ctx).size.height * .8),
+            child: SingleChildScrollView(
+            child: Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -353,6 +372,8 @@ class _OrderScreenState extends State<OrderScreen> {
               ],
             ),
           ),
+          ),
+          ),
         ),
       ),
     );
@@ -388,7 +409,30 @@ class _OrderScreenState extends State<OrderScreen> {
       child: Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        title: Text(_baslik(), overflow: TextOverflow.ellipsis),
+        /*
+         * THE TITLE IS THE BUTTON.
+         *
+         * "T2" is where a waiter looks to find out which table he is on, so it
+         * is where he looks to change what that table is called. Burying the
+         * etiket in Islemler put a name - the most-used, least-dangerous thing
+         * on the screen - behind the same door as masa tasi and indirim.
+         *
+         * One tap on the title, both names in one sheet: the TABLE's etiket
+         * (who is sitting there, seen by every phone and the till) and this
+         * ADISYON's name (which of the two bills on that table this is).
+         */
+        title: InkWell(
+          onTap: _adlar,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Flexible(child: Text(_baslik(), overflow: TextOverflow.ellipsis)),
+              const SizedBox(width: 6),
+              const Icon(Icons.sell_outlined, size: 17, color: NokTheme.ink3),
+            ]),
+          ),
+        ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(46),
           child: Container(
@@ -464,6 +508,105 @@ class _OrderScreenState extends State<OrderScreen> {
   /// Tab 1 - the bill as the till has it. The embedded BillScreen keeps its
   /// own loading and refresh, so nothing about how a bill is fetched changed
   /// in order to put it here.
+  /// Masa etiketi + adisyon adi, in one sheet, off one tap on the title.
+  Future<void> _adlar() async {
+    final et = TextEditingController(text: widget.table.etiket);
+    final ad = TextEditingController(
+        text: bills.where((b) => b.id == orderId).map((b) => b.label).firstWhere((_) => true, orElse: () => ''));
+    var busy = false;
+    final id = orderId;
+
+    final degisti = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetCtx) => StatefulBuilder(builder: (sheetCtx, setSheet) {
+        Future<void> kaydet() async {
+          if (busy) return;
+          setSheet(() => busy = true);
+          try {
+            await Api.instance.setEtiket(widget.table.id, et.text);
+            if (id != null) await Api.instance.setLabel(id, ad.text);
+            if (sheetCtx.mounted) Navigator.of(sheetCtx).pop(true);
+          } catch (e) {
+            setSheet(() => busy = false);
+            if (sheetCtx.mounted) {
+              ScaffoldMessenger.of(sheetCtx).showSnackBar(
+                  SnackBar(content: Text(e.toString()), backgroundColor: NokTheme.orangeDark));
+            }
+          }
+        }
+
+        return Padding(
+          padding: EdgeInsets.only(
+              left: 18, right: 18, top: 10,
+              bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 18),
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: Container(width: 38, height: 4, margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(color: NokTheme.line, borderRadius: BorderRadius.circular(2)))),
+                Text(widget.table.name,
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 14),
+                const Text('MASA ETİKETİ',
+                    style: TextStyle(fontSize: 10.5, letterSpacing: .7, color: NokTheme.ink3)),
+                const SizedBox(height: 4),
+                TextField(
+                  controller: et,
+                  autofocus: true,
+                  maxLength: 60,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                      hintText: 'Ahmet Bey, doğum günü, VIP...', counterText: ''),
+                ),
+                const SizedBox(height: 4),
+                const Text('Masanın üstünde ve bütün telefonlarda görünür. Masa boşalınca silinir.',
+                    style: TextStyle(fontSize: 11.5, color: NokTheme.ink3)),
+                if (id != null) ...[
+                  const SizedBox(height: 18),
+                  const Text('ADİSYON ADI',
+                      style: TextStyle(fontSize: 10.5, letterSpacing: .7, color: NokTheme.ink3)),
+                  const SizedBox(height: 4),
+                  TextField(
+                    controller: ad,
+                    maxLength: 30,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                        hintText: 'Ahmet 1, Ahmet 2, pencere kenarı...', counterText: ''),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text('Aynı masada birden fazla adisyon varsa hangisi olduğunu söyler.',
+                      style: TextStyle(fontSize: 11.5, color: NokTheme.ink3)),
+                ],
+                const SizedBox(height: 18),
+                Row(children: [
+                  const Spacer(),
+                  TextButton(
+                      onPressed: busy ? null : () => Navigator.of(sheetCtx).pop(false),
+                      child: const Text('Vazgec')),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: busy ? null : kaydet,
+                    child: busy
+                        ? const SizedBox(width: 16, height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Text('Kaydet'),
+                  ),
+                ]),
+              ]),
+          ),
+        );
+      }),
+    );
+    if (degisti == true && mounted) {
+      _loadBills();
+      setState(() => _billSurum++);
+    }
+  }
+
   /// "S4 · #80" - the table, and which adisyon is being written on.
   String _baslik() {
     final b = bills.where((x) => x.id == orderId);

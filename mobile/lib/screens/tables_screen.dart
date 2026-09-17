@@ -44,11 +44,42 @@ class _TablesScreenState extends State<TablesScreen> {
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 20), (_) => _load(silent: true));
+    _timer = Timer.periodic(const Duration(seconds: 20), (_) => _tazele());
   }
 
   @override
   void dispose() { _timer?.cancel(); super.dispose(); }
+
+  /*
+   * THE REFRESH THAT WAS COSTING THE MOST.
+   *
+   * Every twenty seconds this screen called /bootstrap - zones, tables, the
+   * WHOLE MENU and the permission list - and rebuilt all of it. On a bar with
+   * four hundred products that is a large JSON body parsed on the main thread
+   * three times a minute, on a handset, while the waiter is trying to scroll.
+   * It is a good part of "the app is slow".
+   *
+   * The menu does not change during service. The silent refresh asks for the
+   * floor plan alone now; the full bootstrap runs when the screen opens and
+   * when the waiter pulls to refresh.
+   */
+  Future<void> _tazele() async {
+    try {
+      final res = await Api.instance.call('GET', '/api/mobile/tables');
+      if (!mounted) return;
+      setState(() {
+        tables = (res['tables'] as List).map((t) => TableInfo.fromJson(t)).toList();
+        final z = res['zones'];
+        if (z is List && z.isNotEmpty) zones = z.map((e) => Zone.fromJson(e)).toList();
+        viaRelay = Api.instance.lastCallUsedRelay;
+      });
+    } catch (_) {
+      /* a missed tick is not worth a message - the next one is 20 seconds
+         away and the error box belongs to the full load */
+    }
+    final n = await OfflineQueue.count();
+    if (mounted && n != queued) setState(() => queued = n);
+  }
 
   Future<void> _load({bool silent = false}) async {
     if (!silent) setState(() { loading = true; error = null; });

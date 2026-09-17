@@ -41,7 +41,19 @@ class BillScreen extends StatefulWidget {
   State<BillScreen> createState() => _BillScreenState();
 }
 
-class _BillScreenState extends State<BillScreen> {
+class _BillScreenState extends State<BillScreen> with AutomaticKeepAliveClientMixin {
+  /*
+   * KEPT ALIVE INSIDE THE TABS.
+   *
+   * A TabBarView disposes the tab you swipe away from, so Adisyon and Islemler
+   * were re-fetching the whole bill every single time the waiter moved between
+   * them - two HTTP round trips over the restaurant's wifi for a screen he had
+   * looked at four seconds ago. They stay alive now and refresh when there is
+   * a reason to: a send, or a pull.
+   */
+  @override
+  bool get wantKeepAlive => widget.embedded;
+
   Map<String, dynamic>? order;
   bool loading = true;
   String? error;
@@ -504,19 +516,17 @@ class _BillScreenState extends State<BillScreen> {
         ]),
         const SizedBox(height: 8),
         Row(children: [
-          Expanded(child: _op(Icons.edit_outlined, 'Adisyon adı', 'Ahmet 1, Ahmet 2', s.canOrder, _rename)),
-          const SizedBox(width: 8),
+          /* Adisyon adi and masa etiketi are NOT here any more: naming the
+             table is the most-used and least-dangerous thing on the screen,
+             and it was behind the same door as masa tasi and indirim. It is
+             one tap on the title now. */
           Expanded(child: _op(Icons.edit_note, 'Adisyon notu',
               _notOzet(), s.canOrder, _notlar)),
-        ]),
-        const SizedBox(height: 8),
-        Row(children: [
+          const SizedBox(width: 8),
           Expanded(child: _op(Icons.list_alt_outlined, 'Yazdırma kuyruğu', 'bekleyen işler', true, () {
             Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const PrintJobsScreen()));
           })),
-          const SizedBox(width: 8),
-          const Expanded(child: SizedBox()),
         ]),
       ],
     );
@@ -598,6 +608,7 @@ class _BillScreenState extends State<BillScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);   // AutomaticKeepAliveClientMixin
     /* Inside the table's tabs there is no app bar of our own and no tab bar of
        our own - just the body, and the bottom action bar only on the bill. */
     if (widget.embedded) {

@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The Android launch plate matches the app's first Flutter frame exactly, so
+     the hand-over from one to the other cannot be seen. It used to be a full
+     orange field that flashed to white the moment Flutter drew. -->
 <resources>
-    <color name="launch_bg">#EA580C</color>
+    <color name="launch_bg">#FFFFFF</color>
 </resources>

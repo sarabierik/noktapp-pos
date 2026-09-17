@@ -88,37 +88,58 @@ class AcilisEkrani extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    /*
+     * WHITE, WITH THE MARK - not a wall of orange.
+     *
+     * A full orange screen for a second reads as an interruption; the eye has
+     * to adjust twice, once into it and once out of it into the white app.
+     * The plate is the app's own surface with the mark on it, so the opening
+     * is one continuous thing, and the Android launch screen was changed to
+     * match - there is no flash between them at all any more.
+     */
     return Scaffold(
-      backgroundColor: NokTheme.orangeDark,
+      backgroundColor: Colors.white,
       body: Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
-            width: 96, height: 96,
+            width: 84, height: 84,
             decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: .14),
-                borderRadius: BorderRadius.circular(26)),
+              gradient: const LinearGradient(
+                  begin: Alignment.topLeft, end: Alignment.bottomRight,
+                  colors: [NokTheme.orange, NokTheme.orangeDark]),
+              borderRadius: BorderRadius.circular(22),
+            ),
             child: const Center(
               child: Text('NG',
                   style: TextStyle(
                       color: Colors.white,
-                      fontSize: 38,
+                      fontSize: 32,
                       fontWeight: FontWeight.w800,
-                      letterSpacing: 1)),
+                      letterSpacing: .5)),
             ),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 18),
           const Text('NOKTApp Garson',
               style: TextStyle(
-                  color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 26),
-          const SizedBox(
-            width: 26, height: 26,
-            child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
+                  color: NokTheme.ink, fontSize: 17, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 22),
+          /* A bar, not a spinner: it sits still on the page instead of
+             drawing the eye round in circles, and it is 2 pixels of movement
+             rather than a wheel that makes a one second wait feel like five. */
+          SizedBox(
+            width: 132,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: const LinearProgressIndicator(
+                minHeight: 3,
+                backgroundColor: Color(0xFFEFEFF1),
+                color: NokTheme.orange,
+              ),
+            ),
           ),
           if (mesaj != null) ...[
-            const SizedBox(height: 16),
-            Text(mesaj!,
-                style: TextStyle(color: Colors.white.withValues(alpha: .85), fontSize: 13.5)),
+            const SizedBox(height: 14),
+            Text(mesaj!, style: const TextStyle(color: NokTheme.ink3, fontSize: 13)),
           ],
         ]),
       ),
