@@ -1,0 +1,60 @@
+NOKTApp Garson - Google Play store listing text
+Paste each block into the matching field. Turkish (tr-TR).
+
+=========================================================
+APP NAME  (max 30)
+=========================================================
+NOKTApp Garson
+
+=========================================================
+SHORT DESCRIPTION  (max 80)
+=========================================================
+Restoran el terminali: masa, adisyon, mutfağa anında sipariş. NOKTApp POS ile.
+
+=========================================================
+FULL DESCRIPTION  (max 4000 - this is 1498)
+=========================================================
+NOKTApp Garson, NOKTApp POS kullanan restoran, kafe ve barlar için garson el terminali uygulamasıdır. Garson siparişi masadan alır, mutfağa anında gönderir; kasaya gidip sıra beklemez.
+
+MASALAR
+• Bütün salon tek ekranda: dolu masalar, tutarları ve ne kadar süredir açık oldukları.
+• Masa etiketi: "Ahmet Bey", "doğum günü", "VIP". Bir garson telefonundan yazdığı anda bütün telefonlarda ve kasada görünür.
+• Masa numarası veya etiket ile arama.
+
+ADİSYON
+• Aynı masada birden fazla adisyon; her birine ayrı ad verilebilir.
+• Hangi ürünün mutfağa gittiği, hangisinin beklediği satır satır görünür.
+• Ürün notu ("acısız", "az pişmiş"), adisyon notu ve yalnızca mutfak fişine basılan mutfak notu.
+
+ÜRÜN EKLEME
+• Kategoriler solda sabit, ürünler sağda: bölüm değiştirmek tek dokunuş.
+• Ürün arama, yarım porsiyon, not ile ekleme.
+
+İŞLEMLER
+• Mutfağa gönder, hesap fişi, mutfak fişini tekrar yazdır, e-posta ile gönder.
+• Masa taşı, indirim, yazdırma kuyruğu.
+• Her işlem kasadaki yetkilere bağlıdır; yetkisi olmayan garson işlemi görür ama kullanamaz.
+
+BAĞLANTI
+• Kasadaki karekodu okutun, bağlantı kurulur. Şifre yazmanıza gerek yoktur.
+• Telefon ve kasa aynı Wi-Fi ağındaysa doğrudan konuşur, internet gerekmez.
+• Aynı ağda değilseniz karekod internet üzerinden de çalışır.
+• Bağlantı koptuğunda alınan siparişler telefonda bekler, bağlantı gelince kendiliğinden iletilir.
+
+GEREKLİ
+Bu uygulama tek başına çalışmaz. Windows üzerinde çalışan NOKTApp POS kasa programına ihtiyaç duyar. Bilgi: noktapp.com
+
+=========================================================
+GRAPHICS  (in the play-grafik folder next to this file)
+=========================================================
+App icon         512 x 512    play-icon-512.png
+Feature graphic  1024 x 500   play-feature-1024x500.png
+Phone screenshots             you take these yourself, min 2, max 8
+
+=========================================================
+CONTACT DETAILS
+=========================================================
+Category       Business
+Email          destek@noktapp.com
+Website        https://noktapp.com
+Privacy policy https://noktapp.com/gizlilik-garson.html
