@@ -375,7 +375,7 @@ class Api {
       'device_id': deviceId,
       'device_name': phoneName,
       'platform': 'mobile',
-      'app_version': '1.8.1',
+      'app_version': '1.9.0',
     };
 
     String? base;
@@ -438,6 +438,17 @@ class Api {
       call('POST', '/api/mobile/tables/$tableId/etiket', {
         'etiket': etiket,
         if (kalici != null) 'kalici': kalici,
+      });
+
+  /// The note on the bill, and the note only the kitchen sees.
+  ///
+  /// Either may be left out; sending an empty string clears one. They are two
+  /// fields on purpose - `notes` is printed on the guest's bill as well as the
+  /// kitchen slip, `kitchenNote` never leaves the kitchen.
+  Future<Map<String, dynamic>> setNote(int orderId, {String? notes, String? kitchenNote}) =>
+      call('POST', '/api/mobile/orders/$orderId/note', {
+        if (notes != null) 'notes': notes,
+        if (kitchenNote != null) 'kitchen_note': kitchenNote,
       });
 
   /// Labels already in use in this restaurant, offered as chips so the same

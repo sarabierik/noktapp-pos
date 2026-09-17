@@ -510,7 +510,33 @@ class _OrderScreenState extends State<OrderScreen> {
                                         fontSize: 14.5,
                                         fontWeight: FontWeight.w700,
                                         color: NokTheme.orangeDark)),
-                                const SizedBox(width: 8),
+                                /*
+                                 * THE NOTE BUTTON, BECAUSE A LONG PRESS IS
+                                 * NOT A FEATURE ANYBODY FINDS.
+                                 *
+                                 * Adding a product with a note has worked for
+                                 * months - hold the product down. Holding
+                                 * things down is not something waiters try on
+                                 * a screen they are using at speed, and the
+                                 * one line of hint text above the list is read
+                                 * once and then never again. "Acisiz" was
+                                 * being shouted across the pass instead.
+                                 *
+                                 * The long press still works. This is just the
+                                 * same thing, visible.
+                                 */
+                                const SizedBox(width: 4),
+                                InkWell(
+                                  onTap: out ? null : () => _addWithNote(p),
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(5),
+                                    child: Icon(Icons.edit_note,
+                                        size: 21,
+                                        color: out ? NokTheme.ink3 : NokTheme.ink3),
+                                  ),
+                                ),
+                                const SizedBox(width: 2),
                                 Icon(Icons.add_circle_outline,
                                     size: 20,
                                     color: out ? NokTheme.ink3 : NokTheme.orange),

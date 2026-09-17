@@ -285,6 +285,112 @@ class _BillScreenState extends State<BillScreen> {
   /// Every row here is a permission. What the waiter may not do is shown
   /// greyed with the reason, rather than hidden - a waiter who cannot find
   /// "masa taşı" assumes the handset lacks it and walks to the till anyway.
+  /*
+   * ADİSYON NOTU AND MUTFAK NOTU.
+   *
+   * A line note is about a dish - "acisiz", "buzsuz". This is about the table,
+   * and it had nowhere to live: "pasta 21:30 gelecek", "fatura istiyor",
+   * "alerji: fistik" were told to one waiter and then existed only in his
+   * head until he happened to be standing next to whoever needed them.
+   *
+   * Two fields, not one, because they print in two different places and
+   * mixing them is a real mistake. The guest's note goes on the hesap fisi
+   * AND the mutfak fisi. The kitchen one - "acele", "cocuk icin once ciksin" -
+   * goes only to the kitchen, because a guest reading it on his own bill
+   * learns something nobody meant to tell him.
+   */
+  Future<void> _notlar() async {
+    final o = order;
+    if (o == null) return;
+    final not = TextEditingController(text: (o['notes'] ?? '').toString());
+    final mut = TextEditingController(text: (o['kitchen_note'] ?? '').toString());
+    var busy = false;
+
+    final degisti = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetCtx) => StatefulBuilder(builder: (sheetCtx, setSheet) {
+        Future<void> kaydet() async {
+          if (busy) return;
+          setSheet(() => busy = true);
+          try {
+            await Api.instance.setNote(widget.orderId,
+                notes: not.text, kitchenNote: mut.text);
+            if (sheetCtx.mounted) Navigator.of(sheetCtx).pop(true);
+          } catch (e) {
+            setSheet(() => busy = false);
+            if (sheetCtx.mounted) {
+              ScaffoldMessenger.of(sheetCtx).showSnackBar(
+                  SnackBar(content: Text(e.toString()), backgroundColor: NokTheme.orangeDark));
+            }
+          }
+        }
+
+        return Padding(
+          padding: EdgeInsets.only(
+              left: 18, right: 18, top: 10,
+              bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 18),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(child: Container(width: 38, height: 4, margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(color: NokTheme.line, borderRadius: BorderRadius.circular(2)))),
+              const Text('Adisyon notu',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              const Text('Hesap fisinde ve mutfak fisinde gorunur.',
+                  style: TextStyle(color: NokTheme.ink3, fontSize: 12.5)),
+              const SizedBox(height: 10),
+              TextField(
+                controller: not,
+                autofocus: true,
+                maxLength: 255,
+                maxLines: 2,
+                minLines: 1,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                    hintText: 'Pasta 21:30 gelecek, fatura istiyor...', counterText: ''),
+              ),
+              const SizedBox(height: 18),
+              const Text('Mutfak notu',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              const Text('YALNIZCA mutfak fisine basilir. Musterinin hesabinda gorunmez.',
+                  style: TextStyle(color: NokTheme.ink3, fontSize: 12.5)),
+              const SizedBox(height: 10),
+              TextField(
+                controller: mut,
+                maxLength: 255,
+                maxLines: 2,
+                minLines: 1,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                    hintText: 'Acele, cocuk icin once ciksin...', counterText: ''),
+              ),
+              const SizedBox(height: 18),
+              Row(children: [
+                const Spacer(),
+                TextButton(
+                    onPressed: busy ? null : () => Navigator.of(sheetCtx).pop(false),
+                    child: const Text('Vazgec')),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: busy ? null : kaydet,
+                  child: busy
+                      ? const SizedBox(width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('Kaydet'),
+                ),
+              ]),
+            ]),
+        );
+      }),
+    );
+    if (degisti == true) _load();
+  }
+
   /// A tile for the İşlemler tab.
   ///
   /// Grey and labelled "yetki yok" rather than hidden when the waiter may not
@@ -373,13 +479,32 @@ class _BillScreenState extends State<BillScreen> {
         Row(children: [
           Expanded(child: _op(Icons.edit_outlined, 'Adisyon adı', 'Ahmet 1, Ahmet 2', s.canOrder, _rename)),
           const SizedBox(width: 8),
+          Expanded(child: _op(Icons.edit_note, 'Adisyon notu',
+              _notOzet(), s.canOrder, _notlar)),
+        ]),
+        const SizedBox(height: 8),
+        Row(children: [
           Expanded(child: _op(Icons.list_alt_outlined, 'Yazdırma kuyruğu', 'bekleyen işler', true, () {
             Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const PrintJobsScreen()));
           })),
+          const SizedBox(width: 8),
+          const Expanded(child: SizedBox()),
         ]),
       ],
     );
+  }
+
+  /// What the İşlemler tile says under "Adisyon notu" - the note itself when
+  /// there is one, so it can be read without opening anything.
+  String _notOzet() {
+    final o = order;
+    if (o == null) return 'not ekle';
+    final n = (o['notes'] ?? '').toString().trim();
+    final k = (o['kitchen_note'] ?? '').toString().trim();
+    if (n.isEmpty && k.isEmpty) return 'not ekle';
+    final t = n.isNotEmpty ? n : 'mutfak: $k';
+    return t.length > 26 ? '${t.substring(0, 26)}...' : t;
   }
 
   /// How many lines on this bill have not reached the kitchen yet.
@@ -514,7 +639,50 @@ class _BillScreenState extends State<BillScreen> {
     final o = order!;
     final items = (o['items'] as List).cast<Map<String, dynamic>>();
     double d(dynamic v) => double.tryParse('$v') ?? 0;
+    final notu = (o['notes'] ?? '').toString().trim();
+    final mutfak = (o['kitchen_note'] ?? '').toString().trim();
     return ListView(padding: const EdgeInsets.all(14), children: [
+      /* The note sits ABOVE the lines, where it is read before the bill is
+         totalled - an allergy or "fatura istiyor" is worth nothing discovered
+         underneath the money. The kitchen one is marked, so nobody reads it
+         out to the guest by accident. */
+      if (notu.isNotEmpty || mutfak.isNotEmpty)
+        Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF1E8),
+            border: Border.all(color: NokTheme.orange),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Icon(Icons.edit_note, size: 19, color: NokTheme.orangeDark),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                if (notu.isNotEmpty)
+                  Text(notu,
+                      style: const TextStyle(
+                          fontSize: 13.5, fontWeight: FontWeight.w600, color: NokTheme.ink)),
+                if (mutfak.isNotEmpty) ...[
+                  if (notu.isNotEmpty) const SizedBox(height: 4),
+                  Text('Mutfak: $mutfak',
+                      style: const TextStyle(
+                          fontSize: 12.5, fontWeight: FontWeight.w600, color: NokTheme.orangeDark)),
+                ],
+              ]),
+            ),
+            if (Session.instance.canOrder)
+              InkWell(
+                onTap: _notlar,
+                borderRadius: BorderRadius.circular(8),
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(Icons.edit_outlined, size: 16, color: NokTheme.orangeDark),
+                ),
+              ),
+          ]),
+        ),
       Card(
         color: Colors.white,
         elevation: 0,

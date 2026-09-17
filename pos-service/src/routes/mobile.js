@@ -276,6 +276,16 @@ r.post('/orders/:id/discount', can('order.discount'), wrap(async (req, res) => {
 }));
 
 /** A, B, C - which party on the table this bill belongs to. */
+/*
+ * Adisyon notu. order.create, same as the bill's name: writing down that the
+ * cake arrives at half nine is part of waiting the table.
+ */
+r.post('/orders/:id/note', can('order.create'), wrap(async (req, res) => {
+  const b = req.body || {};
+  ok(res, await orders.setNotes(req.clientId, Number(req.params.id),
+    { notes: b.notes, kitchenNote: b.kitchen_note }, req.auth.uid));
+}));
+
 r.post('/orders/:id/label', can('order.create'), wrap(async (req, res) => {
   try { ok(res, { label: await orders.renameBill(req.clientId, Number(req.params.id), req.body.label) }); }
   catch (e) { fail(res, e.message, e.status || 400); }

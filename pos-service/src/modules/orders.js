@@ -237,6 +237,46 @@ function halves(q) {
   return snapped < 0.5 ? 0.5 : snapped;
 }
 
+/**
+ * The note on the bill itself, as opposed to the note on a line.
+ *
+ * A line note is about a dish - "acisiz", "buzsuz". This is about the table:
+ * "pasta 21:30 gelecek", "fatura istiyor", "alerji: fistik". It had nowhere to
+ * live, so it was told to the waiter and then existed only in his head until
+ * he happened to be standing next to the person who needed it.
+ *
+ * TWO fields, because they print in two different places and mixing them is a
+ * real mistake: `notes` is the party's note and appears on the hesap fisi AND
+ * the mutfak fisi; `kitchen_note` is for the kitchen alone - "acele", "cocuk
+ * icin once ciksin" - and must never turn up on what the guest is handed.
+ */
+async function setNotes(clientId, orderId, { notes, kitchenNote } = {}, userId = null) {
+  const o = await db.one(
+    'SELECT id, status FROM orders WHERE id=? AND client_id=? AND is_deleted=0', [orderId, clientId]);
+  if (!o) { const e = new Error('Adisyon bulunamadi'); e.status = 404; throw e; }
+  if (o.status !== 'open') { const e = new Error('Kapanmis adisyona not eklenemez'); e.status = 409; throw e; }
+
+  const kes = (v) => {
+    if (v === undefined) return undefined;
+    const t = String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+    return t === '' ? null : t.slice(0, 255);
+  };
+  const n = kes(notes);
+  const k = kes(kitchenNote);
+
+  const set = [];
+  const args = [];
+  if (n !== undefined) { set.push('notes=?'); args.push(n); }
+  if (k !== undefined) { set.push('kitchen_note=?'); args.push(k); }
+  if (!set.length) return { id: Number(orderId) };
+  set.push('notes_at=NOW()', 'notes_by=?', 'updated_at=NOW()');
+  args.push(userId || null, orderId, clientId);
+
+  await db.exec(`UPDATE orders SET ${set.join(', ')} WHERE id=? AND client_id=?`, args);
+  log.info('orders', 'Adisyon notu guncellendi', { order: Number(orderId), by: userId || null });
+  return { id: Number(orderId), notes: n, kitchen_note: k };
+}
+
 async function addItem(clientId, orderId, { productId, qty = 1, note = null, unitPrice = null, userId, appLocalId = null }) {
   qty = halves(qty);
   return db.tx(async t => {
@@ -1017,6 +1057,7 @@ async function recentClosed(clientId, limit = 40, date = null) {
 }
 
 module.exports = {
+  setNotes,
   nextBillLabel, renameBill,
   getOrder, openOrdersForTable, tablePlan, openOrder, openOrGetOrder, addItem, updateItem,
   cancelItem, sendToStations, setBillDiscount, transferTable, splitBill, mergeBills,

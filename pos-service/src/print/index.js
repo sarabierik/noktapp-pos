@@ -70,6 +70,17 @@ async function buildStationSlip(clientId, order, station, items, userName) {
   r.bold(false).align('left').rule('=');
   r.cols('Adisyon #' + order.adisyon_no, stamp());
   if (userName) r.line('Garson: ' + userName);
+  /*
+   * THE NOTES, ABOVE THE FOOD.
+   *
+   * Both of them, and above the lines rather than under them: a cook reads
+   * the top of a slip and starts, and a note about the whole order - an
+   * allergy, "cocuk icin once ciksin" - is useless once he has already begun.
+   * `notes` is the guest's own note and prints here as well as on the bill;
+   * `kitchen_note` prints ONLY here.
+   */
+  if (order.notes) { r.rule('-'); r.bold(true).line('NOT: ' + order.notes).bold(false); }
+  if (order.kitchen_note) { if (!order.notes) r.rule('-'); r.bold(true).line('MUTFAK: ' + order.kitchen_note).bold(false); }
   r.rule('-');
   for (const it of items) {
     r.double(true).line(`${Number(it.send_qty || it.qty)} x ${it.product_name}`).double(false);
@@ -241,6 +252,14 @@ async function buildBill(clientId, order,
     r.line('Garson: ' + d.meta.waiter);
   }
   r.rule('-');
+
+  /*
+   * The party's own note, on the paper they are handed. `kitchen_note` is
+   * deliberately NOT here: "acele" and "cocuk icin once ciksin" are
+   * instructions to the kitchen, and a guest reading them on his bill learns
+   * something about the restaurant that nobody meant to tell him.
+   */
+  if (order.notes) { r.line('Not: ' + order.notes); r.rule('-'); }
 
   for (const l of d.lines) {
     r.item(qtyText(l.qty), l.name, tl(l.lineTotal));
