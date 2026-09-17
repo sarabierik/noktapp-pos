@@ -9,9 +9,19 @@ import 'theme.dart';
 /// Deliberately a small app: take the order, print the bill, mail the bill.
 /// Everything else - payments, reports, the cash drawer - stays at the till
 /// where the money is, which is also what the restaurant's accountant expects.
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await Api.instance.load();
+  /*
+   * runApp FIRST, and load the saved session inside the app rather than in
+   * front of it.
+   *
+   * It used to `await Api.instance.load()` here, before a single frame was
+   * drawn. The Android launch plate handed over to Flutter, Flutter had
+   * nothing to draw yet, and what the waiter got was a white rectangle for as
+   * long as SharedPreferences took to answer - which on a cheap handset after
+   * a cold start is not a flicker, it is a second or two of an app that looks
+   * broken every time it is opened.
+   */
   runApp(const NoktAppGarson());
 }
 
@@ -24,7 +34,94 @@ class NoktAppGarson extends StatelessWidget {
       title: 'NOKTApp Garson',
       debugShowCheckedModeBanner: false,
       theme: NokTheme.theme,
-      home: Api.instance.token == null ? const PairScreen() : const TablesScreen(),
+      home: const _Acilis(),
+    );
+  }
+}
+
+/// Loads the saved session, showing the brand plate while it does.
+class _Acilis extends StatefulWidget {
+  const _Acilis();
+  @override
+  State<_Acilis> createState() => _AcilisState();
+}
+
+class _AcilisState extends State<_Acilis> {
+  bool hazir = false;
+  bool eslesti = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _yukle();
+  }
+
+  Future<void> _yukle() async {
+    try {
+      await Api.instance.load();
+    } catch (_) {
+      /* a corrupt preference file must not stop the app opening - the waiter
+         can always pair again, but only if a screen appears */
+    }
+    if (!mounted) return;
+    setState(() {
+      eslesti = Api.instance.token != null;
+      hazir = true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!hazir) return const AcilisEkrani();
+    return eslesti ? const TablesScreen() : const PairScreen();
+  }
+}
+
+/// The brand plate - the same orange the Android launch screen uses, so the
+/// hand-over from one to the other is invisible instead of a white flash.
+class AcilisEkrani extends StatelessWidget {
+  const AcilisEkrani({super.key, this.mesaj});
+
+  /// "Masalar yukleniyor", "Kasa araniyor" - said out loud, because a waiter
+  /// standing in front of a spinner with no words assumes it has hung.
+  final String? mesaj;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: NokTheme.orangeDark,
+      body: Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 96, height: 96,
+            decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: .14),
+                borderRadius: BorderRadius.circular(26)),
+            child: const Center(
+              child: Text('NG',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 38,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1)),
+            ),
+          ),
+          const SizedBox(height: 22),
+          const Text('NOKTApp Garson',
+              style: TextStyle(
+                  color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 26),
+          const SizedBox(
+            width: 26, height: 26,
+            child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
+          ),
+          if (mesaj != null) ...[
+            const SizedBox(height: 16),
+            Text(mesaj!,
+                style: TextStyle(color: Colors.white.withValues(alpha: .85), fontSize: 13.5)),
+          ],
+        ]),
+      ),
     );
   }
 }

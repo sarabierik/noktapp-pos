@@ -55,6 +55,9 @@ class _OrderScreenState extends State<OrderScreen> {
    * are permanently on view AND the products are too.
    */
   int catIndex = 0;
+
+  /// Is the basket open? Collapsed by default - see _draftPanel.
+  bool sepetAcik = false;
   String search = '';
   bool sending = false;
 
@@ -629,40 +632,82 @@ class _OrderScreenState extends State<OrderScreen> {
     );
   }
 
+  /*
+   * THE BASKET, AS A BAR THAT OPENS - NOT A PANEL THAT SITS THERE.
+   *
+   * It was a fixed panel up to 250 pixels tall, pinned under the products, and
+   * it appeared the moment the first item was tapped. On a handheld that is
+   * between a third and half the screen, permanently, taken away from the one
+   * thing the waiter is looking at: the menu. Adding the second item meant
+   * scrolling a list that had just been cut in half, and the last product row
+   * sat underneath the bar where it could not be tapped at all.
+   *
+   * Collapsed it is one line - what the order comes to, how many lines, and
+   * the button that ends the job. Tap it and it opens over the products;
+   * tap it again, or send, and it is gone. Same information, none of the rent.
+   */
   Widget _draftPanel() {
+    final kalem = draft.length;
     return Container(
-      decoration: const BoxDecoration(
-          color: Colors.white, border: Border(top: BorderSide(color: NokTheme.line))),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: const Border(top: BorderSide(color: NokTheme.line)),
+        boxShadow: [
+          if (sepetAcik)
+            BoxShadow(color: Colors.black.withValues(alpha: .10), blurRadius: 14, offset: const Offset(0, -4)),
+        ],
+      ),
       child: SafeArea(
         top: false,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 250),
-            child: ListView.separated(
-              shrinkWrap: true,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              itemCount: draft.length,
-              separatorBuilder: (_, __) => const Divider(height: 1, color: NokTheme.line),
-              itemBuilder: (_, i) => _draftLine(draft[i]),
+          if (sepetAcik)
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * .42),
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                itemCount: draft.length,
+                separatorBuilder: (_, __) => const Divider(height: 1, color: NokTheme.line),
+                itemBuilder: (_, i) => _draftLine(draft[i]),
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
-            child: Row(children: [
-              Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('Toplam',
-                    style: TextStyle(color: NokTheme.ink3, fontSize: 12.5)),
-                Text(NokTheme.tl(draftTotal),
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
-              ])),
-              SizedBox(
-                  width: 190,
-                  child: FilledButton(
-                      onPressed: sending ? null : _send,
-                      child: Text(sending ? 'Gonderiliyor...' : 'Mutfaga gonder'))),
-            ]),
-          ),
+          /* The bar itself. The whole left side is the handle, because a
+             waiter aims at the number, not at a 20 pixel chevron. */
+          Row(children: [
+            Expanded(
+              child: InkWell(
+                onTap: () => setState(() => sepetAcik = !sepetAcik),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+                  child: Row(children: [
+                    Icon(sepetAcik ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up,
+                        size: 22, color: NokTheme.ink3),
+                    const SizedBox(width: 6),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Sepet · $kalem kalem',
+                            style: const TextStyle(color: NokTheme.ink3, fontSize: 11.5)),
+                        Text(NokTheme.tl(draftTotal),
+                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(0, 8, 12, 8),
+              child: SizedBox(
+                width: 168,
+                height: 46,
+                child: FilledButton(
+                    onPressed: sending ? null : _send,
+                    child: Text(sending ? 'Gonderiliyor...' : 'Mutfaga gonder')),
+              ),
+            ),
+          ]),
         ]),
       ),
     );

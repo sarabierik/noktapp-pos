@@ -21,6 +21,10 @@ class Api {
   int? clientId;
   String deviceId = '';
   String deviceName = 'Telefon';
+
+  /// The till's address as this phone currently knows it - shown in the menu
+  /// so a waiter can read it out to whoever is asking, without guessing.
+  String? get lanBase => _lanBase;
   bool lastCallUsedRelay = false;
 
   final _uuid = const Uuid();
@@ -375,7 +379,7 @@ class Api {
       'device_id': deviceId,
       'device_name': phoneName,
       'platform': 'mobile',
-      'app_version': '1.9.0',
+      'app_version': '1.9.1',
     };
 
     String? base;

@@ -5,6 +5,7 @@ import '../services/api.dart';
 import '../services/session.dart';
 import '../services/queue.dart';
 import '../theme.dart';
+import '../main.dart' show AcilisEkrani;
 import 'bill_picker.dart';
 import 'order_screen.dart';
 import 'pair_screen.dart';
@@ -161,6 +162,24 @@ class _TablesScreenState extends State<TablesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        /*
+         * THE MENU, AND THE TWO THINGS THAT WERE NOWHERE.
+         *
+         * There was no way out of this app. Once a phone was paired it stayed
+         * paired, with no sign of who it was paired AS and no way to hand the
+         * handset to the next shift - the only exit was to uninstall it. And
+         * the till's address, which a waiter needs about twice a year, was
+         * being asked for on the pairing screen, which he sees every day.
+         *
+         * Both belong here: behind one tap, out of the way, always findable.
+         */
+        leading: Builder(
+          builder: (c) => IconButton(
+            icon: const Icon(Icons.menu),
+            tooltip: 'Menu',
+            onPressed: () => _menu(c),
+          ),
+        ),
         title: const Text('Masalar'),
         actions: [
           if (queued > 0)
@@ -259,8 +278,136 @@ class _TablesScreenState extends State<TablesScreen> {
     );
   }
 
+  /// Who this phone is, where the till is, and the way out.
+  Future<void> _menu(BuildContext c) async {
+    final s = Session.instance;
+    await showModalBottomSheet(
+      context: c,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetCtx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+            child: Row(children: [
+              Container(
+                width: 42, height: 42,
+                decoration: BoxDecoration(
+                    color: const Color(0xFFFFF1E8), borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.person_outline, color: NokTheme.orangeDark),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(s.userName.isEmpty ? 'NOKTApp Garson' : s.userName,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                  Text(Api.instance.deviceName,
+                      style: const TextStyle(fontSize: 12.5, color: NokTheme.ink3)),
+                ]),
+              ),
+            ]),
+          ),
+          const Divider(height: 1, color: NokTheme.line),
+          ListTile(
+            leading: const Icon(Icons.wifi_tethering, color: NokTheme.ink2),
+            title: const Text('Kasa adresi'),
+            subtitle: Text(Api.instance.lanBase ?? 'aranıyor',
+                style: const TextStyle(fontSize: 12)),
+            onTap: () { Navigator.pop(sheetCtx); _kasaAdresi(); },
+          ),
+          ListTile(
+            leading: const Icon(Icons.refresh, color: NokTheme.ink2),
+            title: const Text('Kasayı tekrar ara'),
+            onTap: () async {
+              Navigator.pop(sheetCtx);
+              await Api.instance.locate(force: true);
+              if (mounted) _load();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.logout, color: NokTheme.orangeDark),
+            title: const Text('Çıkış yap',
+                style: TextStyle(color: NokTheme.orangeDark, fontWeight: FontWeight.w600)),
+            subtitle: const Text('Telefonun kasa ile bağlantısı kesilir',
+                style: TextStyle(fontSize: 12)),
+            onTap: () { Navigator.pop(sheetCtx); _cikis(); },
+          ),
+          const SizedBox(height: 6),
+        ]),
+      ),
+    );
+  }
+
+  /// Typing the till's address by hand - the rare case, behind the menu
+  /// instead of on the screen a waiter sees every morning.
+  Future<void> _kasaAdresi() async {
+    final ctrl = TextEditingController(text: Api.instance.lanBase ?? '');
+    final kaydet = await showDialog<bool>(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        title: const Text('Kasa adresi'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Normalde telefon kasayı kendi bulur. Bulamıyorsa kasadaki '
+              '"Telefon bağla" ekranında yazan adresi buraya yazın.',
+              style: TextStyle(fontSize: 12.5, color: NokTheme.ink3)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: ctrl,
+            autofocus: true,
+            keyboardType: TextInputType.url,
+            decoration: const InputDecoration(hintText: 'http://192.168.1.40:7451'),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Vazgec')),
+          FilledButton(onPressed: () => Navigator.pop(dCtx, true), child: const Text('Kaydet')),
+        ],
+      ),
+    );
+    if (kaydet != true || !mounted) return;
+    final ok = await Api.instance.setManualBase(ctrl.text);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok ? 'Kasa bulundu' : 'Bu adreste kasa yanit vermedi'),
+      backgroundColor: ok ? NokTheme.ok : NokTheme.orangeDark,
+    ));
+    if (ok) _load();
+  }
+
+  /// Out. Asked properly, because it un-pairs: the next person has to scan a
+  /// new symbol at the till, and a waiter who taps it by accident in the
+  /// middle of service has just lost his handset for ten minutes.
+  Future<void> _cikis() async {
+    final n = await OfflineQueue.count();
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        title: const Text('Cikis yap'),
+        content: Text(n > 0
+            ? '$n siparis henuz kasaya iletilmedi. Cikarsaniz bu siparisler '
+              'gonderilemez. Once baglantiyi bekleyin.'
+            : 'Bu telefonun kasa ile baglantisi kesilecek. Tekrar baglanmak icin '
+              'kasadaki karekodu okutmaniz gerekir.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Vazgec')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: NokTheme.orangeDark),
+            onPressed: () => Navigator.pop(dCtx, true),
+            child: const Text('Cikis yap'),
+          ),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+    await Api.instance.forget();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const PairScreen()), (_) => false);
+  }
+
   Widget _plan() {
-    if (loading) return const Center(child: CircularProgressIndicator(color: NokTheme.orange));
+    if (loading) return const AcilisEkrani(mesaj: 'Masalar yukleniyor');
     if (error != null) return _errorBox();
     var list = zoneId == null ? tables : tables.where((t) => t.zoneId == zoneId).toList();
     if (arama.isNotEmpty) {
