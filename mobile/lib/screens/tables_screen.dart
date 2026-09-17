@@ -32,6 +32,11 @@ class _TablesScreenState extends State<TablesScreen> {
   /// in - two OrderScreens for one table is not a screen anyone wants.
   bool opening = false;
 
+  /// What is typed in the search box. Matches the table's name AND its etiket,
+  /// because half the time the waiter knows the guest's name and not the
+  /// number - "Ahmet" has to find MS101.
+  String arama = '';
+
   Timer? _timer;
 
   @override
@@ -169,24 +174,66 @@ class _TablesScreenState extends State<TablesScreen> {
           IconButton(onPressed: () => _load(), icon: const Icon(Icons.refresh)),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(52),
+          preferredSize: const Size.fromHeight(56),
           child: Container(
-            height: 52,
+            height: 56,
             color: Colors.white,
-            child: ListView(scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              children: [
-                for (final z in zones)
-                  Padding(padding: const EdgeInsets.only(right: 8, top: 8, bottom: 8),
-                    child: ChoiceChip(
-                      label: Text(z.name),
-                      selected: zoneId == z.id,
-                      onSelected: (_) => setState(() => zoneId = z.id),
-                      selectedColor: NokTheme.ink,
-                      labelStyle: TextStyle(color: zoneId == z.id ? Colors.white : NokTheme.ink2),
-                      side: const BorderSide(color: NokTheme.line),
-                      backgroundColor: Colors.white)),
-              ]),
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+            /*
+             * A DROPDOWN AND A SEARCH BOX, NOT A ROW OF CHIPS.
+             *
+             * The chips ate a whole row of the screen to show four words, and
+             * a restaurant with eight zones had to scroll sideways to reach
+             * the garden. The dropdown says the same thing in a quarter of the
+             * width, and the space that buys goes to search - which is the
+             * control a waiter actually needs, because he is looking for one
+             * table out of sixty while walking.
+             */
+            child: Row(children: [
+              Container(
+                height: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                    border: Border.all(color: NokTheme.line),
+                    borderRadius: BorderRadius.circular(10)),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int?>(
+                    value: zoneId,
+                    isDense: true,
+                    borderRadius: BorderRadius.circular(10),
+                    style: const TextStyle(fontSize: 14, color: NokTheme.ink, fontWeight: FontWeight.w600),
+                    items: [
+                      const DropdownMenuItem<int?>(value: null, child: Text('Tumu')),
+                      for (final z in zones) DropdownMenuItem<int?>(value: z.id, child: Text(z.name)),
+                    ],
+                    onChanged: (v) => setState(() => zoneId = v),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SizedBox(
+                  height: 40,
+                  child: TextField(
+                    onChanged: (v) => setState(() => arama = v.trim().toLowerCase()),
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: 'Masa veya etiket ara',
+                      hintStyle: const TextStyle(fontSize: 14, color: NokTheme.ink3),
+                      prefixIcon: const Icon(Icons.search, size: 19, color: NokTheme.ink3),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: NokTheme.line)),
+                      enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: NokTheme.line)),
+                    ),
+                  ),
+                ),
+              ),
+            ]),
           ),
         ),
       ),
@@ -215,18 +262,61 @@ class _TablesScreenState extends State<TablesScreen> {
   Widget _plan() {
     if (loading) return const Center(child: CircularProgressIndicator(color: NokTheme.orange));
     if (error != null) return _errorBox();
-    final list = zoneId == null ? tables : tables.where((t) => t.zoneId == zoneId).toList();
-    return RefreshIndicator(
-      onRefresh: () => _load(),
-      color: NokTheme.orange,
-      child: GridView.builder(
-        padding: const EdgeInsets.all(14),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2, childAspectRatio: 1.55, crossAxisSpacing: 12, mainAxisSpacing: 12),
-        itemCount: list.length,
-        itemBuilder: (_, i) => _tableCard(list[i]),
+    var list = zoneId == null ? tables : tables.where((t) => t.zoneId == zoneId).toList();
+    if (arama.isNotEmpty) {
+      list = list
+          .where((t) =>
+              t.name.toLowerCase().contains(arama) || t.etiket.toLowerCase().contains(arama))
+          .toList();
+    }
+    if (list.isEmpty) {
+      return Center(
+        child: Text(arama.isEmpty ? 'Bu bolumde masa yok' : '"$arama" bulunamadi',
+            style: const TextStyle(color: NokTheme.ink3)),
+      );
+    }
+    final dolu = list.where((t) => t.busy).length;
+    return Column(children: [
+      Expanded(
+        child: RefreshIndicator(
+          onRefresh: () => _load(),
+          color: NokTheme.orange,
+          /*
+           * THREE COLUMNS, NOT TWO.
+           *
+           * Two columns of tall cards showed eight tables on a handset, so a
+           * sixty table restaurant was four screens of scrolling and no waiter
+           * could see his section at once - which is the entire job of a floor
+           * plan. Three columns of solid tiles show fifteen, status reads as
+           * colour from across the room, and the numbers that matter - what
+           * the table owes, how long it has been sitting, what it is called -
+           * all still fit.
+           */
+          child: GridView.builder(
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3, childAspectRatio: 0.92, crossAxisSpacing: 8, mainAxisSpacing: 8),
+            itemCount: list.length,
+            itemBuilder: (_, i) => _tableCard(list[i]),
+          ),
+        ),
       ),
-    );
+      /* The floor in one line. An owner wants this number and used to have to
+         add it up off the screen. */
+      Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+            color: Colors.white, border: Border(top: BorderSide(color: NokTheme.line))),
+        padding: const EdgeInsets.fromLTRB(16, 11, 16, 11),
+        child: Row(children: [
+          Text('$dolu dolu · ${list.length - dolu} bos',
+              style: const TextStyle(color: NokTheme.ink3, fontSize: 13)),
+          const Spacer(),
+          Text(NokTheme.tl(list.fold<double>(0, (a, t) => a + t.openTotal)),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        ]),
+      ),
+    ]);
   }
 
   Widget _errorBox() => Center(
@@ -363,75 +453,90 @@ class _TablesScreenState extends State<TablesScreen> {
   }
 
   Widget _tableCard(TableInfo t) {
-    // "3 adisyon" tells a waiter nothing about which one is his party's;
-    // "3 adisyon - A, B, C" lets him decide before the sheet even opens
-    final line = t.busy
-        ? (t.labels.isEmpty ? '${t.openBills} adisyon' : '${t.openBills} adisyon - ${t.labels}')
-        : 'bos';
+    final busy = t.busy;
+    final sure = t.sure;
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(12),
       onTap: () => _openTable(t),
-      /* Long press, not a menu button: the card is already the size of a
-         thumb and a waiter's other hand is holding plates. */
+      /* Long press labels the table. The tag in the corner does the same for
+         anyone who never discovers a long press. */
       onLongPress: () => _etiketVer(t),
       child: Container(
-        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: t.busy ? const Color(0xFFFFF1E8) : Colors.white,
-          border: Border.all(color: t.busy ? NokTheme.orange : NokTheme.line),
-          borderRadius: BorderRadius.circular(14),
+          gradient: busy
+              ? const LinearGradient(
+                  begin: Alignment.topLeft, end: Alignment.bottomRight,
+                  colors: [NokTheme.orange, NokTheme.orangeDark])
+              : null,
+          color: busy ? null : Colors.white,
+          border: Border.all(color: busy ? NokTheme.orangeDark : NokTheme.line),
+          borderRadius: BorderRadius.circular(12),
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Container(width: 8, height: 8,
-                decoration: BoxDecoration(
-                    color: t.busy ? NokTheme.orange : const Color(0xFFC9C9CE), shape: BoxShape.circle)),
-            const SizedBox(width: 8),
-            Expanded(child: Text(t.name,
-                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
-            /* Long press does the same thing, but nobody discovers a long
-               press. The tag is how the feature gets found on day one. */
-            InkWell(
-              onTap: () => _etiketVer(t),
-              borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: const EdgeInsets.all(3),
-                child: Icon(Icons.sell_outlined, size: 17,
-                    color: t.etiket.isEmpty ? NokTheme.ink3 : NokTheme.orangeDark),
-              ),
-            ),
-          ]),
-          const SizedBox(height: 4),
-          Text(line,
-              maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: NokTheme.ink3, fontSize: 12.5)),
-          /*
-           * THE LABEL, AND WHY IT IS THE LOUDEST THING ON THE CARD.
-           *
-           * "MS101" identifies the table to the system. "Ahmet Bey" identifies
-           * it to the people working the floor, and it is the only line on
-           * this card anybody reads out loud. So when it exists it gets the
-           * weight, and the table's own name stays above it as the address.
-           */
-          if (t.etiket.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Row(children: [
-              if (t.etiketKalici) ...[
-                const Icon(Icons.push_pin, size: 12, color: NokTheme.orangeDark),
-                const SizedBox(width: 4),
+        child: Stack(children: [
+          // corners: how many bills, and how long they have been sitting
+          Positioned(
+            left: 6, top: 5,
+            child: Text(busy && t.openBills > 1 ? '${t.openBills} adisyon' : '',
+                style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    color: busy ? Colors.white.withValues(alpha: .92) : NokTheme.ink3)),
+          ),
+          Positioned(
+            right: 6, top: 5,
+            child: Text(sure,
+                style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    color: busy ? Colors.white.withValues(alpha: .92) : NokTheme.ink3)),
+          ),
+          Positioned(
+            right: 4, bottom: 4,
+            child: Icon(Icons.sell_outlined,
+                size: 14,
+                color: busy
+                    ? Colors.white.withValues(alpha: t.etiket.isEmpty ? .45 : .95)
+                    : (t.etiket.isEmpty ? const Color(0xFFC9C9CE) : NokTheme.orangeDark)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 20, 6, 6),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Icon(Icons.table_restaurant_outlined,
+                    size: 17, color: busy ? Colors.white : const Color(0xFFC9C9CE)),
+                const SizedBox(height: 3),
+                Text(t.name,
+                    maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 13.5, fontWeight: FontWeight.w700,
+                        color: busy ? Colors.white : NokTheme.ink)),
+                if (t.etiket.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    if (t.etiketKalici)
+                      Icon(Icons.push_pin, size: 9,
+                          color: busy ? Colors.white : NokTheme.orangeDark),
+                    Flexible(
+                      child: Text(t.etiket,
+                          maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 10.5, fontWeight: FontWeight.w700,
+                              color: busy ? Colors.white : NokTheme.orangeDark)),
+                    ),
+                  ]),
+                ],
+                const SizedBox(height: 3),
+                Text(busy ? NokTheme.tl(t.openTotal) : 'bos',
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: busy ? 12.5 : 11,
+                        fontWeight: busy ? FontWeight.w700 : FontWeight.w400,
+                        color: busy ? Colors.white : NokTheme.ink3)),
               ],
-              Expanded(
-                child: Text(t.etiket,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w700, color: NokTheme.orangeDark)),
-              ),
-            ]),
-          ],
-          const Spacer(),
-          Text(t.busy ? NokTheme.tl(t.openTotal) : '',
-              style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: NokTheme.orangeDark)),
+            ),
+          ),
         ]),
       ),
     );

@@ -285,42 +285,114 @@ class _BillScreenState extends State<BillScreen> {
   /// Every row here is a permission. What the waiter may not do is shown
   /// greyed with the reason, rather than hidden - a waiter who cannot find
   /// "masa taşı" assumes the handset lacks it and walks to the till anyway.
-  void _actions() {
-    final s = Session.instance;
-    Widget row(IconData icon, String label, bool allowed, VoidCallback onTap) => ListTile(
-          leading: Icon(icon, color: allowed ? NokTheme.orangeDark : const Color(0xFFC3C8CF)),
-          title: Text(label,
-              style: TextStyle(color: allowed ? NokTheme.ink : const Color(0xFFC3C8CF))),
-          trailing: allowed
-              ? null
-              : const Text('yetki yok',
-                  style: TextStyle(fontSize: 11.5, color: Color(0xFFC3C8CF))),
-          onTap: allowed
-              ? () { Navigator.pop(context); onTap(); }
-              : null,
-        );
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
-      builder: (_) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Padding(padding: EdgeInsets.fromLTRB(18, 16, 18, 6),
-              child: Align(alignment: Alignment.centerLeft,
-                  child: Text('İşlemler', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)))),
-          row(Icons.send_outlined, 'Mutfağa gönder', s.canOrder, _send),
-          row(Icons.print_outlined, 'Mutfak fişini tekrar yazdır', s.canOrder, _reprintSlip),
-          row(Icons.swap_horiz, 'Masa taşı', s.canTransfer, _transfer),
-          row(Icons.percent, 'İndirim', s.canDiscount, _discount),
-          row(Icons.receipt_long_outlined, 'Yazdırma kuyruğu', true, () {
-            Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const PrintJobsScreen()));
-          }),
-          const SizedBox(height: 8),
+  /// A tile for the İşlemler tab.
+  ///
+  /// Grey and labelled "yetki yok" rather than hidden when the waiter may not
+  /// do it: a button that vanishes teaches nobody anything, and the manager
+  /// standing next to him needs to see that the action exists and why it is
+  /// refused.
+  Widget _op(IconData icon, String label, String hint, bool allowed, VoidCallback onTap) {
+    final c = allowed ? NokTheme.orangeDark : const Color(0xFFC3C8CF);
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: allowed ? onTap : null,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: NokTheme.line),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(children: [
+          Container(
+            width: 38, height: 38,
+            decoration: BoxDecoration(
+                color: allowed ? const Color(0xFFFFF1E8) : const Color(0xFFF2F3F5),
+                borderRadius: BorderRadius.circular(11)),
+            child: Icon(icon, size: 19, color: c),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label,
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 13.5, fontWeight: FontWeight.w600,
+                        color: allowed ? NokTheme.ink : const Color(0xFFB9BFC7))),
+                const SizedBox(height: 1),
+                Text(allowed ? hint : 'yetki yok',
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 10.5, color: NokTheme.ink3)),
+              ]),
+          ),
         ]),
       ),
     );
+  }
+
+  /*
+   * İŞLEMLER, ON THE SCREEN INSTEAD OF BEHIND A "..." .
+   *
+   * These five actions lived in a bottom sheet behind the three dots in the
+   * corner of the app bar. Nobody found them. A waiter who needs to move a
+   * table does not go hunting in an overflow menu in the middle of service -
+   * he walks to the till and does it there, which is exactly the walk this
+   * app exists to save, and it is why every restaurant that has seen both
+   * says the handheld "cannot do" things it has always been able to do.
+   *
+   * A tab, two columns of tiles, everything visible at once. The things that
+   * are not permitted stay on the screen and say so.
+   */
+  Widget _islemler() {
+    final s = Session.instance;
+    final gonderilmemis = _pendingCount();
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        Row(children: [
+          Expanded(child: _op(Icons.send_outlined, 'Mutfağa gönder',
+              gonderilmemis > 0 ? '$gonderilmemis kalem bekliyor' : 'hepsi gönderildi',
+              s.canOrder, _send)),
+          const SizedBox(width: 8),
+          Expanded(child: _op(Icons.print_outlined, 'Hesap fişi', 'kasa yazıcısından', true, _print)),
+        ]),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: _op(Icons.receipt_outlined, 'Mutfak fişi', 'tekrar yazdır', s.canOrder, _reprintSlip)),
+          const SizedBox(width: 8),
+          Expanded(child: _op(Icons.mail_outline, 'E-posta', 'müşteriye gönder', true, _mail)),
+        ]),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: _op(Icons.swap_horiz, 'Masa taşı', 'başka masaya aktar', s.canTransfer, _transfer)),
+          const SizedBox(width: 8),
+          Expanded(child: _op(Icons.percent, 'İndirim', 'tutar veya oran', s.canDiscount, _discount)),
+        ]),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: _op(Icons.edit_outlined, 'Adisyon adı', 'Ahmet 1, Ahmet 2', s.canOrder, _rename)),
+          const SizedBox(width: 8),
+          Expanded(child: _op(Icons.list_alt_outlined, 'Yazdırma kuyruğu', 'bekleyen işler', true, () {
+            Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const PrintJobsScreen()));
+          })),
+        ]),
+      ],
+    );
+  }
+
+  /// How many lines on this bill have not reached the kitchen yet.
+  int _pendingCount() {
+    final o = order;
+    if (o == null) return 0;
+    try {
+      return (o['items'] as List)
+          .where((i) => (i as Map)['sent_at'] == null && (i['is_sent'] ?? 0) != 1)
+          .length;
+    } catch (_) {
+      return 0;
+    }
   }
 
   /// One action: the icon above its word, so the word has the whole column and
@@ -354,7 +426,9 @@ class _BillScreenState extends State<BillScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
       appBar: AppBar(
         /*
          * The title is the control. A waiter looking for "where do I name this
@@ -381,19 +455,26 @@ class _BillScreenState extends State<BillScreen> {
             ]),
           ),
         ),
-        actions: [
-          IconButton(
-              tooltip: 'İşlemler',
-              onPressed: order == null ? null : _actions,
-              icon: const Icon(Icons.more_horiz)),
-        ],
+        bottom: order == null
+            ? null
+            : const TabBar(
+                labelColor: NokTheme.orangeDark,
+                unselectedLabelColor: NokTheme.ink3,
+                indicatorColor: NokTheme.orange,
+                indicatorWeight: 3,
+                labelStyle: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
+                unselectedLabelStyle: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600),
+                tabs: [Tab(text: 'Adisyon'), Tab(text: 'İşlemler')],
+              ),
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator(color: NokTheme.orange))
           : error != null
               ? Center(child: Padding(padding: const EdgeInsets.all(28),
                   child: Text(error!, textAlign: TextAlign.center, style: const TextStyle(color: NokTheme.ink2))))
-              : _bill(),
+              : (order == null
+                  ? _bill()
+                  : TabBarView(children: [_bill(), _islemler()])),
       /*
        * THE ACTION BAR, AND WHY IT IS NOT THREE .icon BUTTONS IN A ROW.
        *
@@ -425,6 +506,7 @@ class _BillScreenState extends State<BillScreen> {
           ]),
         ),
       ),
+     ),
     );
   }
 

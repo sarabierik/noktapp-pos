@@ -54,6 +54,11 @@ class TableInfo {
   /// handset sees it.
   final String etiket;
 
+  /// When the first still-open bill on this table was opened. The floor plan
+  /// has always sent it; nothing used to read it. "38 dk" on the tile is how a
+  /// waiter spots the table that has been sitting with an empty glass.
+  final DateTime? openedAt;
+
   /// false: the label belongs to the party and the till deletes it when the
   /// last bill closes. true: it belongs to the table itself - VIP, sigara
   /// icilir, deniz manzarali - and survives the table going empty.
@@ -67,10 +72,22 @@ class TableInfo {
         openTotal = double.tryParse('${j['open_total'] ?? 0}') ?? 0,
         labels = (j['labels'] ?? '').toString(),
         etiket = (j['etiket'] ?? '').toString(),
+        openedAt = j['opened_at'] == null ? null : DateTime.tryParse('${j['opened_at']}'),
         etiketKalici = j['etiket_kalici'] == true || j['etiket_kalici'] == 1,
         groupOrderId =
             j['group_order_id'] == null ? null : int.tryParse('${j['group_order_id']}');
   bool get busy => openBills > 0;
+
+  /// "38 dk", "2 sa 15", or empty when the table is free. Kept here rather
+  /// than in the widget so the floor plan and the bill screen cannot disagree.
+  String get sure {
+    final o = openedAt;
+    if (!busy || o == null) return '';
+    final d = DateTime.now().difference(o);
+    if (d.isNegative) return '';
+    if (d.inMinutes < 60) return '${d.inMinutes} dk';
+    return '${d.inHours} sa ${(d.inMinutes % 60).toString().padLeft(2, '0')}';
+  }
 }
 
 class Zone {
