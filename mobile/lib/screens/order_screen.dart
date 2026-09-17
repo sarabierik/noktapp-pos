@@ -70,6 +70,14 @@ class _OrderScreenState extends State<OrderScreen> {
   /// Every open bill on this table, for the strip and for the chooser.
   TableBills? loaded;
 
+  /// Bumped after a send, so the Adisyon and İşlemler tabs re-fetch instead of
+  /// showing the bill as it was before the round went in.
+  int _billSurum = 0;
+
+  /// How many lines the till already has on this bill - the number on the
+  /// Adisyon tab. Filled from the bill list, which the screen reloads anyway.
+  int gonderilenAdet = 0;
+
   List<OpenBill> get bills => loaded == null ? const <OpenBill>[] : loaded!.bills;
 
   @override
@@ -223,12 +231,16 @@ class _OrderScreenState extends State<OrderScreen> {
         }
       });
       _loadBills();
+      /*
+       * It used to PUSH the bill screen here - a whole new page over the top
+       * of the menu, every single time a round went to the kitchen, which the
+       * waiter then had to back out of before he could take the next one.
+       * The bill is a tab now, so sending simply refreshes it and leaves him
+       * where he is standing.
+       */
+      setState(() { _billSurum++; sepetAcik = false; });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Siparis mutfaga gonderildi'), backgroundColor: NokTheme.ok));
-      if (newId > 0) {
-        Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => BillScreen(orderId: newId, tableName: widget.table.name)));
-      }
     } catch (e) {
       // no connection: keep it on the phone and replay it later, carrying the
       // chosen bill with it. A queued round that "finds a bill" at replay time
@@ -367,6 +379,141 @@ class _OrderScreenState extends State<OrderScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 3,
+      /* Ürün Ekle first: nine times out of ten a table is opened to put
+         something on it, and the tab a waiter wants should already be the
+         one in front of him. */
+      initialIndex: 1,
+      child: Scaffold(
+      appBar: AppBar(
+        titleSpacing: 0,
+        title: Text(_baslik(), overflow: TextOverflow.ellipsis),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(46),
+          child: Container(
+            color: Colors.white,
+            child: TabBar(
+              labelColor: NokTheme.orangeDark,
+              unselectedLabelColor: NokTheme.ink3,
+              indicatorColor: NokTheme.orange,
+              indicatorWeight: 3,
+              indicatorSize: TabBarIndicatorSize.tab,
+              labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+              unselectedLabelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              tabs: [
+                Tab(
+                  height: 46,
+                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    const Text('Adisyon'),
+                    /* The count is the thing Wolvox gets right and we did not:
+                       a waiter can see there is something on this table
+                       without opening the tab. */
+                    if (gonderilenAdet > 0) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                            color: NokTheme.orange, borderRadius: BorderRadius.circular(9)),
+                        child: Text('$gonderilenAdet',
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                      ),
+                    ],
+                  ]),
+                ),
+                const Tab(height: 46, text: 'Ürün Ekle'),
+                const Tab(height: 46, text: 'İşlemler'),
+              ],
+            ),
+          ),
+        ),
+      ),
+      body: Column(children: [
+        /* The bills on this table stay above the tabs, not inside one: which
+           adisyon you are writing on is true of all three tabs, and a waiter
+           who switches bill on "Ürün Ekle" must not find the "Adisyon" tab
+           still showing the other one. */
+        _billStrip(),
+        Expanded(
+          child: TabBarView(children: [
+            _adisyonTab(),
+            _urunEkleTab(),
+            _islemlerTab(),
+          ]),
+        ),
+      ]),
+     ),
+    );
+  }
+
+  /* =================================================================== *
+   * THE THREE TABS                                                       *
+   * =================================================================== *
+   *
+   * Adding products lived on one screen and reading the bill on another,
+   * with a back button between them - and that is the trip a waiter makes
+   * twenty times a service: put a round on, look at what they have had, put
+   * another round on. Three tabs over one table, and the trip is a thumb
+   * moving two centimetres.
+   *
+   * The order is the order of the work: what is on the table, what to add to
+   * it, what to do with it.
+   */
+
+  /// Tab 1 - the bill as the till has it. The embedded BillScreen keeps its
+  /// own loading and refresh, so nothing about how a bill is fetched changed
+  /// in order to put it here.
+  /// "S4 · #80" - the table, and which adisyon is being written on.
+  String _baslik() {
+    final b = bills.where((x) => x.id == orderId);
+    if (b.isEmpty) return widget.table.name;
+    return '${widget.table.name} · ${b.first.shortName}';
+  }
+
+  Widget _adisyonTab() {
+    final id = orderId;
+    if (id == null) return _bosAdisyon('Bu masada henüz adisyon yok.',
+        'Ürün Ekle sekmesinden ürün seçip mutfağa gönderin.');
+    return BillScreen(
+        key: ValueKey('bill-$id-$_billSurum'),
+        orderId: id, tableName: widget.table.name, embedded: true, embeddedTab: 0,
+        onLineCount: (n) {
+          if (mounted && n != gonderilenAdet) setState(() => gonderilenAdet = n);
+        });
+  }
+
+  /// Tab 3 - masa taşı, indirim, adisyon adı, notlar, yazdırma.
+  Widget _islemlerTab() {
+    final id = orderId;
+    if (id == null) return _bosAdisyon('İşlemler için önce adisyon gerekir.',
+        'Ürün Ekle sekmesinden ilk ürünü gönderdiğinizde açılır.');
+    return BillScreen(
+        key: ValueKey('act-$id-$_billSurum'),
+        orderId: id, tableName: widget.table.name, embedded: true, embeddedTab: 1);
+  }
+
+  Widget _bosAdisyon(String baslik, String alt) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(30),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.receipt_long_outlined, size: 42, color: Color(0xFFC9C9CE)),
+            const SizedBox(height: 14),
+            Text(baslik,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Text(alt,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 13, color: NokTheme.ink3, height: 1.4)),
+          ]),
+        ),
+      );
+
+  /// Tab 2 - the menu, and the basket bar along the bottom.
+  Widget _urunEkleTab() {
+    /* Computed here rather than in build(): only this tab needs them, and the
+       other two rebuild every time a category is tapped. */
     final cat = widget.menu.isEmpty
         ? null
         : widget.menu[catIndex.clamp(0, widget.menu.length - 1)];
@@ -376,21 +523,7 @@ class _OrderScreenState extends State<OrderScreen> {
             .expand((c) => c.products)
             .where((p) => p.name.toLowerCase().contains(search.toLowerCase()))
             .toList();
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.table.name),
-        actions: [
-          if (orderId != null)
-            TextButton(
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) =>
-                        BillScreen(orderId: orderId!, tableName: widget.table.name))),
-                child: const Text('Hesap', style: TextStyle(color: NokTheme.orangeDark))),
-        ],
-      ),
-      body: Column(children: [
-        _billStrip(),
+    return Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
           child: TextField(
@@ -553,8 +686,7 @@ class _OrderScreenState extends State<OrderScreen> {
           ]),
         ),
         if (draft.isNotEmpty) _draftPanel(),
-      ]),
-    );
+      ]);
   }
 
   /// The other bills on this table, as tabs - and the way to open one more.

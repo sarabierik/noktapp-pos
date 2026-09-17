@@ -15,7 +15,28 @@ import 'print_jobs_screen.dart';
 class BillScreen extends StatefulWidget {
   final int orderId;
   final String tableName;
-  const BillScreen({super.key, required this.orderId, required this.tableName});
+
+  /*
+   * EMBEDDED: the same bill, inside the table's own tab bar.
+   *
+   * Adding products lived on one screen and reading the bill on another, so
+   * "what have they had" and "put another round on" were two different places
+   * with a back button between them - which is exactly the trip a waiter
+   * makes twenty times a service. The table screen now carries three tabs and
+   * this widget supplies two of them: 0 the bill, 1 the operations. It keeps
+   * its own loading and its own refresh, so nothing about how the bill is
+   * fetched had to change to move it.
+   */
+  final bool embedded;
+  final int embeddedTab;
+
+  /// How many lines the till has on this bill, handed back as soon as it is
+  /// known - the number on the Adisyon tab. The table screen cannot work it
+  /// out for itself without fetching the bill a second time.
+  final ValueChanged<int>? onLineCount;
+
+  const BillScreen({super.key, required this.orderId, required this.tableName,
+      this.embedded = false, this.embeddedTab = 0, this.onLineCount});
   @override
   State<BillScreen> createState() => _BillScreenState();
 }
@@ -31,7 +52,13 @@ class _BillScreenState extends State<BillScreen> {
   Future<void> _load() async {
     try {
       final r = await Api.instance.call('GET', '/api/mobile/orders/${widget.orderId}');
-      if (mounted) setState(() { order = r['order'] as Map<String, dynamic>; loading = false; });
+      if (!mounted) return;
+      final o = r['order'] as Map<String, dynamic>;
+      setState(() { order = o; loading = false; });
+      final cb = widget.onLineCount;
+      if (cb != null) {
+        try { cb((o['items'] as List).length); } catch (_) {}
+      }
     } catch (e) {
       if (mounted) setState(() { error = e.toString(); loading = false; });
     }
@@ -549,8 +576,37 @@ class _BillScreenState extends State<BillScreen> {
     );
   }
 
+  /// The body for whichever tab the table screen asked for.
+  Widget _govde() {
+    if (loading) return const Center(child: CircularProgressIndicator(color: NokTheme.orange));
+    if (error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(error!, textAlign: TextAlign.center, style: const TextStyle(color: NokTheme.ink2)),
+            const SizedBox(height: 14),
+            OutlinedButton(onPressed: () { setState(() { loading = true; error = null; }); _load(); },
+                child: const Text('Tekrar dene')),
+          ]),
+        ),
+      );
+    }
+    if (order == null) return const SizedBox.shrink();
+    return widget.embeddedTab == 1 ? _islemler() : _bill();
+  }
+
   @override
   Widget build(BuildContext context) {
+    /* Inside the table's tabs there is no app bar of our own and no tab bar of
+       our own - just the body, and the bottom action bar only on the bill. */
+    if (widget.embedded) {
+      return Scaffold(
+        backgroundColor: NokTheme.bg,
+        body: _govde(),
+        bottomNavigationBar: (widget.embeddedTab == 0 && order != null) ? _altCubuk() : null,
+      );
+    }
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -613,7 +669,13 @@ class _BillScreenState extends State<BillScreen> {
        * target for a thumb on the move. Yazdır stays filled because it is the
        * one that ends the job.
        */
-      bottomNavigationBar: order == null ? null : SafeArea(
+      bottomNavigationBar: order == null ? null : _altCubuk(),
+     ),
+    );
+  }
+
+  /// Mutfaga / E-posta / Yazdir - the bar under the bill.
+  Widget _altCubuk() => SafeArea(
         child: Container(
           decoration: const BoxDecoration(
             color: Colors.white,
@@ -630,10 +692,7 @@ class _BillScreenState extends State<BillScreen> {
             Expanded(child: _action(Icons.print_outlined, 'Yazdır', _print, primary: true)),
           ]),
         ),
-      ),
-     ),
-    );
-  }
+      );
 
   Widget _bill() {
     final o = order!;

@@ -379,7 +379,7 @@ class Api {
       'device_id': deviceId,
       'device_name': phoneName,
       'platform': 'mobile',
-      'app_version': '1.9.1',
+      'app_version': '2.0.0',
     };
 
     String? base;
