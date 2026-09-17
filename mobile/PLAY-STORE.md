@@ -8,13 +8,20 @@ Your console account (**Noktapp**, personal) is already created.
 ## 1. Build the upload package
 
 ```powershell
-.\KUR.ps1        # only if the android\ project does not exist yet
 .\YAYIN.ps1
 ```
 
-`YAYIN.ps1` creates the signing key if it is missing, wires it into the Gradle
-build, sets the application id, and produces
+That is the whole build. `YAYIN.ps1` creates the signing key if it is missing,
+writes `android\app\build.gradle.kts` from scratch (signing, application id,
+target API 35) and produces
 `build\app\outputs\bundle\release\app-release.aab`.
+
+You do **not** need `KUR.ps1` any more. It only exists to regenerate the Android
+project from nothing, which you already did once.
+
+The bundle is around 64 MB. About 47 MB of that is native debug symbols that
+Google strips and keeps for crash reports — what a phone actually downloads is
+roughly 25 MB.
 
 ### The one irreversible thing
 
@@ -42,7 +49,7 @@ dealers. Start this on day one — the fourteen days run in the background while
 you finish everything else.
 
 **Target API level 35.** New apps and updates must target API 35 (Android 15).
-Flutter 3.47 already does; `flutter build appbundle` will tell you if not.
+`YAYIN.ps1` pins it, so this one is already handled.
 
 ---
 
@@ -110,11 +117,16 @@ programına ihtiyaç duyar. Bilgi: noktapp.com
 |---|---|---|
 | App icon | 512 × 512 PNG | the NG mark — `assets/noktapp-garson-icon.png` upscaled |
 | Feature graphic | 1024 × 500 PNG | orange background, "NOKTApp Garson" + a phone |
-| Phone screenshots | min 2, max 8, ≥ 1080 px | take them with the demo mode on |
+| Phone screenshots | min 2, max 8, ≥ 1080 px | from a real paired phone |
 
-For the screenshots run the app, tap **Demo**, and photograph: the floor plan,
-Ürün Ekle with the rail, the Adisyon tab, İşlemler, and the etiket sheet. Five
-is plenty. Do not use the mockups I drew — Google wants the real app.
+There is no demo mode in this build, so take the screenshots from a phone
+paired to a real till with a few open tables on it. Photograph: the table list,
+**Ürün Ekle** with the category rail, the **Adisyon** tab, **İşlemler**, and the
+etiket sheet. Five is plenty.
+
+On Android: hold **Power + Volume Down**. Any modern phone screenshot is over
+1080 px, so no resizing is needed. Do not use mockups — Google wants the real
+app, and a listing whose screenshots do not match the app gets pulled.
 
 ---
 
@@ -155,8 +167,8 @@ programme and its extra review.
 
 ## 8. The order to do it in
 
-1. `.\YAYIN.ps1` → get the .aab. **Back up the key.**
-2. Console → **Create app** → NOKTApp Garson, Turkish, App, Free.
+1. `.\YAYIN.ps1` → get the .aab. **Back up the key.**  ✔ done
+2. Console → **Create app** → NOKTApp Garson, Turkish, App, Free.  ✔ done
 3. Upload the .aab to **Closed testing**, add your 12 testers, send them the
    opt-in link. **The 14 days start now.**
 4. While that runs: privacy policy URL, data safety, content rating, store
