@@ -71,9 +71,45 @@ $yedek  = "$gradle.noktapp-yedek"
 
 # Her calistirmada TEMIZ dosyadan basla. Ikinci bir calistirma, bir oncekinin
 # ekledigi bloklarin ustune yazmasin diye.
+#
+# Ve yedegin KENDISI temiz olmali: bir onceki surum bozuk bir blok eklediyse ve
+# yedek o dosyadan alindiysa, her calistirma bozuklugu geri getirir. Bu yuzden
+# yedekte bizim izimiz varsa yedek gecersiz sayilir.
+function Temiz([string]$metin) {
+  return -not ($metin -match 'noktappImzaAyari' -or
+               $metin -match 'noktappAnahtar'   -or
+               $metin -match 'val p = java\.util\.Properties')
+}
+
 if (Test-Path $yedek) {
-  Copy-Item $yedek $gradle -Force
+  if (Temiz (Get-Content $yedek -Raw)) {
+    Copy-Item $yedek $gradle -Force
+  } else {
+    Remove-Item $yedek -Force
+    Fail @"
+Yedek dosya bozuk (onceki surumun ekledigi blogu iceriyor) ve silindi.
+Temiz bir Android projesi uretmek icin once sunu calistirin:
+
+    .\KUR.ps1
+
+sonra tekrar:
+
+    .\YAYIN.ps1
+"@
+  }
 } else {
+  if (-not (Temiz (Get-Content $gradle -Raw))) {
+    Fail @"
+android\app\build.gradle dosyasinda onceki bir denemenin kalintisi var.
+Temiz bir Android projesi uretmek icin once sunu calistirin:
+
+    .\KUR.ps1
+
+sonra tekrar:
+
+    .\YAYIN.ps1
+"@
+  }
   Copy-Item $gradle $yedek -Force
 }
 $g = Get-Content $gradle -Raw
