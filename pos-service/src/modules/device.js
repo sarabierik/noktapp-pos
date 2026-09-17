@@ -467,8 +467,32 @@ function pairPayload(p) {
  * lower for the same physical square.
  */
 function qrSvg(payload, size = 300) {
-  return new QRCode({ content: String(payload), padding: 2, width: size, height: size,
+  const svg = new QRCode({ content: String(payload), padding: 2, width: size, height: size,
     color: '#18181B', background: '#FFFFFF', ecl: 'L', join: true }).svg();
+  /*
+   * THE viewBox, AND WHY PAIRING NEVER WORKED.
+   *
+   * qrcode-svg emits <svg width="300" height="300"> and NO viewBox. The
+   * screen's CSS then says `.pair__qr svg { width:100%; height:100% }` into a
+   * box that is 212 pixels inside its padding. Without a viewBox those two
+   * facts do not combine the way they look like they do: the element is
+   * displayed at 212 while its contents keep drawing at 300 user units, so the
+   * symbol is not scaled down - it is CROPPED. The right hand column and the
+   * bottom row of modules, including the bottom-left finder pattern, were
+   * simply not on the screen.
+   *
+   * A QR code with two of its three finder patterns is not a damaged QR code
+   * that a good camera might still manage. It is not a QR code. Every phone
+   * that has ever been held up to this screen was looking at something no
+   * decoder on earth would accept, which is why "karekod okutun" has never
+   * worked for anybody, on any build, on any network - while the six digit
+   * code underneath it worked perfectly and hid the fault for months.
+   *
+   * One attribute fixes it: with a viewBox the drawing scales to whatever box
+   * the page gives it, at any size, on any screen.
+   */
+  return svg.replace(/<svg([^>]*)>/, (m, attrs) =>
+    /viewBox=/.test(attrs) ? m : `<svg${attrs} viewBox="0 0 ${size} ${size}" preserveAspectRatio="xMidYMid meet">`);
 }
 
 /** Attach the parts the screen needs and strip the raw token out of the reply. */

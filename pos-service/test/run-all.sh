@@ -89,6 +89,10 @@ if node "$ROOT/../desktop-shell/test/guncelleme.js" 2>&1 | tail -3; then :; else
 # had never gone and looked at.
 printf '%-13s ' yazici-tarama
 if node "$ROOT/test/yazici-tarama.js" 2>&1 | tail -1; then :; else FAILED=1; fi
+# The pairing symbol. No database either, and it guards the one attribute whose
+# absence made "karekod okutun" impossible on every build we ever shipped.
+printf '%-13s ' karekod
+if node "$ROOT/test/karekod.js" 2>&1 | tail -1; then :; else FAILED=1; fi
 # geri is LAST and has to stay last: it is the only suite that drops and
 # reloads the whole database, several times. Anything after it would be running
 # against whichever dump its final restore put back.
