@@ -66,54 +66,88 @@ if (-not (Test-Path $props)) {
 # --- 2. gradle'i yayina hazirla -------------------------------------------
 Step 2 "Android projesi yayina hazirlaniyor"
 $gradle = if (Test-Path 'android\app\build.gradle.kts') { 'android\app\build.gradle.kts' } else { 'android\app\build.gradle' }
-$kts = $gradle.EndsWith('.kts')
+$kts    = $gradle.EndsWith('.kts')
+$yedek  = "$gradle.noktapp-yedek"
+
+# Her calistirmada TEMIZ dosyadan basla. Ikinci bir calistirma, bir oncekinin
+# ekledigi bloklarin ustune yazmasin diye.
+if (Test-Path $yedek) {
+  Copy-Item $yedek $gradle -Force
+} else {
+  Copy-Item $gradle $yedek -Force
+}
 $g = Get-Content $gradle -Raw
 
 # applicationId
 $g = $g -replace 'applicationId\s*=\s*"[^"]*"', 'applicationId = "com.noktapp.garson"'
 $g = $g -replace 'applicationId\s+"[^"]*"',     'applicationId "com.noktapp.garson"'
 
-if ($g -notmatch 'noktappImzaAyari') {
-  if ($kts) {
+if ($kts) {
+  # Import'lar dosyanin EN BASINDA olmali. Properties'i burada acmak sart:
+  # android { } blogunun icinde "java" adi Gradle'in kendi java eklentisine
+  # cozuluyor ve java.util.Properties() derlenmiyor.
+  if ($g -notmatch 'import java\.util\.Properties') {
+    $g = "import java.util.Properties`r`nimport java.io.FileInputStream`r`n`r`n" + $g
+  }
+  if ($g -notmatch 'noktappAnahtar') {
     $blok = @'
+
+// noktappAnahtar
+val noktappAnahtar = Properties()
+val noktappAnahtarDosyasi = rootProject.file("key.properties")
+if (noktappAnahtarDosyasi.exists()) {
+    FileInputStream(noktappAnahtarDosyasi).use { noktappAnahtar.load(it) }
+}
+
+'@
+    # plugins { ... } blogundan hemen SONRA
+    $g = [regex]::Replace($g, '(?s)(plugins\s*\{.*?
+\})', "`$1`r`n$blok", 1)
+  }
+  if ($g -notmatch 'noktappImzaAyari') {
+    $imza = @'
     // noktappImzaAyari
     signingConfigs {
         create("release") {
-            val p = java.util.Properties()
-            val f = rootProject.file("key.properties")
-            if (f.exists()) { f.inputStream().use { p.load(it) } }
-            keyAlias = p.getProperty("keyAlias")
-            keyPassword = p.getProperty("keyPassword")
-            storeFile = p.getProperty("storeFile")?.let { file(it) }
-            storePassword = p.getProperty("storePassword")
+            keyAlias = noktappAnahtar.getProperty("keyAlias")
+            keyPassword = noktappAnahtar.getProperty("keyPassword")
+            storePassword = noktappAnahtar.getProperty("storePassword")
+            val yol = noktappAnahtar.getProperty("storeFile")
+            if (yol != null) { storeFile = file(yol) }
         }
     }
+
 '@
-    $g = $g -replace '(?m)^(\s*buildTypes\s*\{)', "$blok`r`n`$1"
-    $g = $g -replace 'signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)', 'signingConfig = signingConfigs.getByName("release")'
-  } else {
-    $blok = @'
+    $g = [regex]::Replace($g, '(?m)^(\s*buildTypes\s*\{)', "$imza`$1", 1)
+  }
+  $g = $g -replace 'signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)', 'signingConfig = signingConfigs.getByName("release")'
+} else {
+  if ($g -notmatch 'noktappImzaAyari') {
+    $imza = @'
     // noktappImzaAyari
     signingConfigs {
         release {
-            def p = new Properties()
-            def f = rootProject.file("key.properties")
-            if (f.exists()) { f.withInputStream { s -> p.load(s) } }
-            keyAlias p.getProperty("keyAlias")
-            keyPassword p.getProperty("keyPassword")
-            storeFile p.getProperty("storeFile") ? file(p.getProperty("storeFile")) : null
-            storePassword p.getProperty("storePassword")
+            def np = new Properties()
+            def nf = rootProject.file("key.properties")
+            if (nf.exists()) { nf.withInputStream { st -> np.load(st) } }
+            keyAlias np.getProperty("keyAlias")
+            keyPassword np.getProperty("keyPassword")
+            storePassword np.getProperty("storePassword")
+            if (np.getProperty("storeFile") != null) { storeFile file(np.getProperty("storeFile")) }
         }
     }
+
 '@
-    $g = $g -replace '(?m)^(\s*buildTypes\s*\{)', "$blok`r`n`$1"
-    $g = $g -replace 'signingConfig\s+signingConfigs\.debug', 'signingConfig signingConfigs.release'
+    $g = [regex]::Replace($g, '(?m)^(\s*buildTypes\s*\{)', "$imza`$1", 1)
   }
-  Set-Content -Path $gradle -Value $g -Encoding UTF8
-  Write-Host "  build.gradle guncellendi (imza + applicationId)" -ForegroundColor Green
+  $g = $g -replace 'signingConfig\s+signingConfigs\.debug', 'signingConfig signingConfigs.release'
+}
+
+Set-Content -Path $gradle -Value $g -Encoding UTF8
+if ($g -match 'signingConfigs\.getByName\("release"\)' -or $g -match 'signingConfigs\.release') {
+  Write-Host "  build.gradle hazir: imza + applicationId com.noktapp.garson" -ForegroundColor Green
 } else {
-  Set-Content -Path $gradle -Value $g -Encoding UTF8
-  Write-Host "  build.gradle zaten hazir" -ForegroundColor Green
+  Write-Host "  UYARI: release imzasi baglanamadi - paket debug anahtari ile imzalanabilir." -ForegroundColor Yellow
 }
 
 # --- 3. paketi uret --------------------------------------------------------
