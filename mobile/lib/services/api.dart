@@ -27,6 +27,7 @@ class Api {
   String? get lanBase => _lanBase;
   bool lastCallUsedRelay = false;
 
+
   final _uuid = const Uuid();
 
   /*
@@ -379,7 +380,7 @@ class Api {
       'device_id': deviceId,
       'device_name': phoneName,
       'platform': 'mobile',
-      'app_version': '2.0.1',
+      'app_version': '2.1.0',
     };
 
     String? base;

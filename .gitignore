@@ -23,3 +23,8 @@ config.json
 panel/tests/shots/
 pos-service/test/shots/
 noktapp-backups/
+
+# Play Store upload key - never commit this
+mobile/android/key.properties
+*.jks
+*.keystore
