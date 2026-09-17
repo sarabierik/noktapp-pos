@@ -45,7 +45,16 @@ class OrderScreen extends StatefulWidget {
 class _OrderScreenState extends State<OrderScreen> {
   final List<DraftLine> draft = [];
   /// null = the category CARDS are showing; an index = that category is open.
-  int? catIndex;
+  /*
+   * A CATEGORY IS ALWAYS OPEN NOW.
+   *
+   * It used to start null, which meant the first thing a waiter saw was a
+   * grid of category cards - a whole screen spent choosing a heading before
+   * a single product was visible, every single time he opened a table. The
+   * rail down the left does that job without costing a screen: the categories
+   * are permanently on view AND the products are too.
+   */
+  int catIndex = 0;
   String search = '';
   bool sending = false;
 
@@ -355,9 +364,9 @@ class _OrderScreenState extends State<OrderScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cat = (catIndex == null || widget.menu.isEmpty)
+    final cat = widget.menu.isEmpty
         ? null
-        : widget.menu[catIndex!.clamp(0, widget.menu.length - 1)];
+        : widget.menu[catIndex.clamp(0, widget.menu.length - 1)];
     final products = search.isEmpty
         ? (cat?.products ?? <Product>[])
         : widget.menu
@@ -390,131 +399,129 @@ class _OrderScreenState extends State<OrderScreen> {
           ),
         ),
         /*
-         * KATEGORİLER KART OLARAK.
+         * KATEGORİ RAYI SOLDA, ÜRÜNLER SAĞDA.
          *
-         * The strip of chips ran off the side of the screen the moment a menu
-         * had more than about eight categories, and a handheld is narrower
-         * than a till - so the waiter was dragging a list sideways, one-handed,
-         * during service. The cards show every category at once with the
-         * number of products in it; tapping one opens it and the bar above
-         * turns into the way back.
+         * Three things were wrong with what was here, and they were the same
+         * thing three times: the screen kept spending itself on navigation
+         * instead of on the menu.
+         *
+         * A strip of chips ran off the side once a menu had eight categories,
+         * so it was replaced by a grid of category CARDS - which cost a whole
+         * screen, every time a table was opened, before one product could be
+         * seen. Then a back button to leave the category, and a header saying
+         * which one you were in, because by then you could not see the others.
+         * Three controls to answer a question - "which part of the menu" -
+         * that a list down the left answers permanently, for free.
+         *
+         * So: the rail always shows every category, the products are always
+         * on screen beside it, and switching section is one tap that never
+         * leaves the products. A row per product rather than a tile two
+         * across fits nine on a handset instead of four, which is what a
+         * waiter taking a round of drinks actually needs.
          */
-        if (search.isEmpty && catIndex != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 2, 14, 0),
-            child: Row(children: [
-              OutlinedButton.icon(
-                onPressed: () => setState(() => catIndex = null),
-                icon: const Icon(Icons.arrow_back, size: 16),
-                label: const Text('Kategoriler'),
-                style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    visualDensity: VisualDensity.compact),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                  child: Text(cat?.name ?? '',
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
-              Text('${cat?.products.length ?? 0} ürün',
-                  style: const TextStyle(color: NokTheme.ink3, fontSize: 12)),
-            ]),
-          ),
-        // the hint is only worth screen space before the first tap; once the
-        // draft has lines the labelled Not button on each of them says it
-        if (draft.isEmpty && (catIndex != null || search.isNotEmpty))
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Text('Not eklemek için ürüne basılı tutun',
-                style: TextStyle(color: NokTheme.ink3, fontSize: 12)),
-          ),
-        /* the category cards, when no category is open and nothing is searched */
-        if (search.isEmpty && catIndex == null)
-          Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.all(14),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2, childAspectRatio: 1.75,
-                  crossAxisSpacing: 10, mainAxisSpacing: 10),
-              itemCount: widget.menu.length,
-              itemBuilder: (_, i) {
-                final c = widget.menu[i];
-                return InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () => setState(() => catIndex = i),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border.all(color: NokTheme.line),
-                        borderRadius: BorderRadius.circular(12)),
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          /* a colour per category, so a waiter learns where
-                             "İçecekler" sits rather than reading every card */
-                          Container(
-                              width: 30, height: 5,
-                              decoration: BoxDecoration(
-                                  color: NokTheme.categoryColour(i),
-                                  borderRadius: BorderRadius.circular(3))),
-                          const Spacer(),
-                          Text(c.name,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 15, fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 2),
-                          Text('${c.products.length} ürün',
-                              style: const TextStyle(color: NokTheme.ink3, fontSize: 12)),
-                        ]),
-                  ),
-                );
-              },
-            ),
-          )
-        else
         Expanded(
-          child: GridView.builder(
-            padding: const EdgeInsets.all(14),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2, childAspectRatio: 1.9, crossAxisSpacing: 10, mainAxisSpacing: 10),
-            itemCount: products.length,
-            itemBuilder: (_, i) {
-              final p = products[i];
-              final out = p.trackStock && p.stock <= 0;
-              return Opacity(
-                opacity: out ? .45 : 1,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(10),
-                  onTap: out ? null : () => _add(p),
-                  onLongPress: out ? null : () => _addWithNote(p),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border.all(color: NokTheme.line),
-                        borderRadius: BorderRadius.circular(10)),
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(p.name,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style:
-                                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                          Text(NokTheme.tl(p.price),
-                              style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                  color: NokTheme.orangeDark)),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (search.isEmpty)
+              Container(
+                width: 104,
+                decoration: const BoxDecoration(
+                    color: Colors.white,
+                    border: Border(right: BorderSide(color: NokTheme.line))),
+                child: ListView.builder(
+                  padding: EdgeInsets.zero,
+                  itemCount: widget.menu.length,
+                  itemBuilder: (_, i) {
+                    final c = widget.menu[i];
+                    final on = i == catIndex;
+                    return InkWell(
+                      onTap: () => setState(() => catIndex = i),
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(9, 11, 7, 11),
+                        decoration: BoxDecoration(
+                          color: on ? NokTheme.orange : Colors.white,
+                          border: const Border(
+                              bottom: BorderSide(color: Color(0xFFF0F0F2))),
+                        ),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(children: [
+                            Container(
+                                width: 3, height: 12,
+                                decoration: BoxDecoration(
+                                    color: on ? Colors.white : NokTheme.categoryColour(i),
+                                    borderRadius: BorderRadius.circular(2))),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(c.name,
+                                  maxLines: 2, overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontSize: 11.5,
+                                      height: 1.25,
+                                      fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+                                      color: on ? Colors.white : NokTheme.ink)),
+                            ),
+                          ]),
+                          const SizedBox(height: 2),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 9),
+                            child: Text('${c.products.length}',
+                                style: TextStyle(
+                                    fontSize: 9.5,
+                                    color: on ? Colors.white70 : NokTheme.ink3)),
+                          ),
                         ]),
-                  ),
+                      ),
+                    );
+                  },
                 ),
-              );
-            },
-          ),
+              ),
+            Expanded(
+              child: products.isEmpty
+                  ? Center(
+                      child: Text(search.isEmpty ? 'Bu kategoride ürün yok' : 'Ürün bulunamadı',
+                          style: const TextStyle(color: NokTheme.ink3)))
+                  : ListView.separated(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      itemCount: products.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(height: 1, thickness: 1, color: Color(0xFFF0F0F2)),
+                      itemBuilder: (_, i) {
+                        final p = products[i];
+                        final out = p.trackStock && p.stock <= 0;
+                        return Opacity(
+                          opacity: out ? .45 : 1,
+                          child: InkWell(
+                            onTap: out ? null : () => _add(p),
+                            /* note on a long press, as before - the hint above
+                               the list says so until the first line is added */
+                            onLongPress: out ? null : () => _addWithNote(p),
+                            child: Container(
+                              color: Colors.white,
+                              padding: const EdgeInsets.fromLTRB(12, 11, 10, 11),
+                              child: Row(children: [
+                                Expanded(
+                                  child: Text(p.name,
+                                      maxLines: 2, overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontSize: 14, fontWeight: FontWeight.w500, height: 1.3)),
+                                ),
+                                const SizedBox(width: 10),
+                                Text(NokTheme.tl(p.price),
+                                    style: const TextStyle(
+                                        fontSize: 14.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: NokTheme.orangeDark)),
+                                const SizedBox(width: 8),
+                                Icon(Icons.add_circle_outline,
+                                    size: 20,
+                                    color: out ? NokTheme.ink3 : NokTheme.orange),
+                              ]),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ]),
         ),
         if (draft.isNotEmpty) _draftPanel(),
       ]),
