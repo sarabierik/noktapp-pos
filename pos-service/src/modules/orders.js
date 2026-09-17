@@ -105,6 +105,7 @@ async function tablePlan(clientId) {
     [clientId]);
   const tables = await db.query(
     `SELECT t.id, t.zone_id, t.name, t.sort_order, t.is_active, t.qr_token,
+            t.etiket, t.etiket_kalici,
             (SELECT COUNT(*) FROM orders o WHERE o.table_id=t.id AND o.client_id=t.client_id
                AND o.status='open' AND o.is_deleted=0) AS open_bills,
             (SELECT COALESCE(SUM(o.grand_total),0) FROM orders o WHERE o.table_id=t.id
@@ -122,6 +123,8 @@ async function tablePlan(clientId) {
     t.open_bills = Number(t.open_bills);
     t.open_total = money(t.open_total);
     t.labels = t.labels || '';
+    t.etiket = t.etiket || '';
+    t.etiket_kalici = !!Number(t.etiket_kalici);
     t.status = t.open_bills > 0 ? 'occupied' : 'free';
   }
   return { zones, tables };
@@ -650,7 +653,25 @@ async function transferTable(clientId, orderId, targetTableId, userId) {
       const left = await t.value(
         "SELECT COUNT(*) FROM orders WHERE table_id=? AND client_id=? AND status='open' AND is_deleted=0",
         [o.table_id, clientId]);
-      if (!Number(left)) await t.exec('UPDATE restaurant_tables SET is_occupied=0 WHERE id=?', [o.table_id]);
+      if (!Number(left)) {
+        await t.exec('UPDATE restaurant_tables SET is_occupied=0 WHERE id=?', [o.table_id]);
+        /*
+         * The table's etiket goes with the guests who earned it.
+         *
+         * "Ahmet Bey", "dogum gunu", "sirket yemegi" describe the party
+         * sitting there, not the table, and the next party at 21:30 must not
+         * inherit them - a waiter reading a stale name off the floor plan
+         * greets the wrong person. So a label dies with the last open bill,
+         * IN THE SAME TRANSACTION as the close so it can never outlive it.
+         *
+         * etiket_kalici=1 is the opposite case and keeps its label: "VIP",
+         * "Sigara icilir", "Deniz manzarali" are facts about the table itself
+         * and are still true when it is empty.
+         */
+        await t.exec(
+          'UPDATE restaurant_tables SET etiket=NULL, etiket_at=NULL, etiket_by=NULL' +
+          ' WHERE id=? AND client_id=? AND COALESCE(etiket_kalici,0)=0', [o.table_id, clientId]);
+      }
     }
     await t.insert(
       `INSERT INTO audit_logs (client_id, actor_client_id, role, action, entity_type, entity_id, before_json, after_json, created_at)

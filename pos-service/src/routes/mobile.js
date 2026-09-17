@@ -156,6 +156,29 @@ r.get('/stations', wrap(async (req, res) => ok(res, { stations: await catalog.st
 
 r.get('/tables', wrap(async (req, res) => ok(res, await orders.tablePlan(req.clientId))));
 
+/*
+ * MASA ETIKETI.
+ *
+ * Written from the phone because that is where the waiter is standing when he
+ * learns it - he is at the table taking the name, not at the till. The table
+ * plan already carries `etiket` back to every other handset and to the till,
+ * so one waiter typing "Ahmet Bey" tells the whole floor.
+ *
+ * order.create, not settings.manage: putting a name on a table is part of
+ * waiting the table, and a waiter who may open a bill may certainly say whose
+ * bill it is. Anything stricter would put it behind a manager and it would
+ * never be used.
+ */
+r.post('/tables/:id/etiket', can('order.create'), wrap(async (req, res) => {
+  const b = req.body || {};
+  ok(res, await require('../modules/floor').setEtiket(req.clientId, Number(req.params.id),
+    { etiket: b.etiket, kalici: b.kalici }, req.auth.uid));
+}));
+
+/** The labels already in use, offered as chips so nobody types them twice. */
+r.get('/etiketler', wrap(async (req, res) =>
+  ok(res, { etiketler: await require('../modules/floor').etiketGecmisi(req.clientId) })));
+
 r.get('/orders/:id', wrap(async (req, res) => {
   const o = await orders.getOrder(req.clientId, req.params.id);
   if (!o) return fail(res, 'Adisyon bulunamadi', 404);

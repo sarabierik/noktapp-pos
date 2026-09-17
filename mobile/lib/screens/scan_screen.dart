@@ -34,10 +34,40 @@ class _ScanScreenState extends State<ScanScreen> {
   bool _done = false;
   bool _torch = false;
 
+  /*
+   * WHAT THE CAMERA IS ACTUALLY SEEING.
+   *
+   * This screen used to be silent by design: anything that was not our symbol
+   * "is simply not a match yet". That reads well and it cost a day. When the
+   * till's symbol ALSO fails to match - a phone whose barcode engine never
+   * starts, a till on an older build emitting a different payload - the screen
+   * behaves in exactly the same way as when it is pointed at a ketchup bottle:
+   * nothing, for ever. The owner's report is "the app cannot read the QR" and
+   * there is not one fact in it to work from.
+   *
+   * So the screen now says what it sees. A foreign symbol is named. A camera
+   * that has not decoded anything at all after six seconds says THAT, which is
+   * a different fault with a different fix, and the two are no longer
+   * indistinguishable from the outside.
+   */
+  int _frames = 0;            // symbols decoded, ours or not
+  String? _foreign;           // the last symbol that was not ours
+  bool _slow = false;         // six seconds, nothing decoded
+  Timer? _watchdog;
+
+  @override
+  void initState() {
+    super.initState();
+    _watchdog = Timer(const Duration(seconds: 6), () {
+      if (mounted && _frames == 0 && !_done) setState(() => _slow = true);
+    });
+  }
+
   @override
   void dispose() {
     /* dispose() on the controller is async and State.dispose() is not; the
        camera is released when it completes and nothing here waits for it. */
+    _watchdog?.cancel();
     unawaited(_controller.dispose());
     super.dispose();
   }
@@ -45,8 +75,21 @@ class _ScanScreenState extends State<ScanScreen> {
   void _onDetect(BarcodeCapture capture) {
     if (_done) return;
     for (final b in capture.barcodes) {
-      final qr = PairQr.parse(b.rawValue ?? '');
-      if (qr == null) continue;
+      final raw = b.rawValue ?? '';
+      if (raw.isEmpty) continue;
+      final qr = PairQr.parse(raw);
+      if (qr == null) {
+        /* Not ours. Name it once - quietly, at the bottom - instead of
+           pretending the camera saw nothing. */
+        if (mounted) {
+          setState(() {
+            _frames++;
+            _slow = false;
+            _foreign = raw.length > 60 ? '${raw.substring(0, 60)}...' : raw;
+          });
+        }
+        continue;
+      }
       _done = true;
       Navigator.of(context).pop(qr);
       return;
@@ -86,16 +129,57 @@ class _ScanScreenState extends State<ScanScreen> {
           ),
         ),
         Positioned(
-          left: 24, right: 24, bottom: 42,
-          child: Text(
-            'Kasadaki "Telefon bagla" ekranindaki kareyi bu cercevenin icine alin.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white, fontSize: 14.5, height: 1.45),
-          ),
+          left: 20, right: 20, bottom: 32,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text(
+              'Kasadaki "Telefon bagla" ekranindaki kareyi bu cercevenin icine alin.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white, fontSize: 14.5, height: 1.45),
+            ),
+            if (_foreign != null) _not(
+              'Bu karekod NOKTApp\'a ait degil:',
+              _foreign!,
+              'Kasada Ayarlar > Cihazlar > Telefon bagla ekranindaki kareyi okutun.',
+            ),
+            if (_slow) _not(
+              'Kamera calisiyor ama hicbir karekod cozulemiyor.',
+              null,
+              'Isigi acin ve 15-20 cm yaklasin. Yine olmazsa geri donup alti haneli '
+              'kodu elle yazin - bu telefonun karekod motoru calismiyor olabilir.',
+            ),
+          ]),
         ),
       ]),
     );
   }
+
+  /// The bottom card that turns "nothing happens" into a sentence.
+  Widget _not(String baslik, String? kod, String ne) => Container(
+        margin: const EdgeInsets.only(top: 14),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.72),
+          border: Border.all(color: NokTheme.orange, width: 1.5),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(baslik,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+          if (kod != null) ...[
+            const SizedBox(height: 6),
+            Text(kod,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    color: Colors.white70, fontSize: 12, fontFamily: 'monospace')),
+          ],
+          const SizedBox(height: 8),
+          Text(ne,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white70, fontSize: 12.5, height: 1.4)),
+        ]),
+      );
 
   /// No camera, or permission refused. Both end the same way - go back and
   /// type the six digits - so they get one screen and one sentence.

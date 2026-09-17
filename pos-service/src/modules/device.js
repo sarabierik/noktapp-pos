@@ -422,9 +422,26 @@ async function createPairCode(clientId, userId, forUserId = null) {
  * this PC answers on, so a phone on the second network card still lands.
  */
 function pairPayload(p) {
-  const addrs = p.addresses && p.addresses.length ? p.addresses : addresses();
-  const q = ['b=' + encodeURIComponent(addrs[0] || ''), 't=' + p.qr_token];
-  if (addrs.length > 1) q.push('a=' + encodeURIComponent(addrs.slice(1, 4).join(',')));
+  const addrs = (p.addresses && p.addresses.length ? p.addresses : addresses())
+    /*
+     * SHORT, BECAUSE EVERY CHARACTER IS MODULES ON A SCREEN.
+     *
+     * The addresses used to go in percent-encoded and whole -
+     * b=http%3A%2F%2F192.168.2.136%3A7451 - which is 37 characters to say
+     * nineteen. On a PC with an ethernet card, a wifi card and a hypervisor
+     * adapter the payload reached 190 characters, and 190 characters at error
+     * correction L is a 53x53 symbol. Drawn 240 pixels wide that is four
+     * pixels per module, off a glossy monitor, held by somebody in the middle
+     * of service. It decodes on a bench and it is miserable in a restaurant.
+     *
+     * The scheme and the encoding carry no information here: the phone puts
+     * http:// back on anything that arrives without it. Dropping them takes
+     * the same symbol to 41x41 - a third fewer rows, half again the module
+     * size - and the phone reads it at arm's length.
+     */
+    .map(a => String(a).replace(/^https?:\/\//, ''));
+  const q = ['b=' + (addrs[0] || ''), 't=' + p.qr_token];
+  if (addrs.length > 1) q.push('a=' + addrs.slice(1, 3).join(','));
   /*
    * `c` IS THE ONE THAT MAKES THIS WORK OUTSIDE THE BUILDING.
    *
@@ -449,7 +466,7 @@ function pairPayload(p) {
  * pocket, and L keeps the module count (and therefore the printed module size)
  * lower for the same physical square.
  */
-function qrSvg(payload, size = 240) {
+function qrSvg(payload, size = 300) {
   return new QRCode({ content: String(payload), padding: 2, width: size, height: size,
     color: '#18181B', background: '#FFFFFF', ecl: 'L', join: true }).svg();
 }

@@ -305,6 +305,60 @@ async function setSeats(clientId, tableId, seats) {
 }
 
 /* ------------------------------------------------------------------ */
+/* masa etiketi                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The free-text label a waiter puts on a table from his own phone.
+ *
+ * The table's NAME is furniture - "MS101", "Teras 3" - set once when the room
+ * was drawn and the same for ever. It is not what anybody in the restaurant
+ * actually says. They say "Ahmet Bey'in masasi", "dogum gunu olan masa",
+ * "rezerve, 20:30 geliyorlar", and until now that lived in one waiter's head:
+ * the man who seated them knew, and the man carrying the plates did not.
+ *
+ * So it goes on the table, not in a note on one bill, and every phone and the
+ * till see the same words within a second. A label is not a bill: a table with
+ * three adisyons has ONE etiket, because there is one party.
+ *
+ * `kalici` is the whole design in one flag - see the migration.
+ */
+async function setEtiket(clientId, tableId, { etiket = null, kalici = null } = {}, userId = null) {
+  const row = await db.one(
+    'SELECT id, etiket_kalici FROM restaurant_tables WHERE id=? AND client_id=? AND is_active=1',
+    [tableId, clientId]);
+  if (!row) throw bad('Masa bulunamadi', 404);
+
+  /* Trimmed, capped and collapsed: this is drawn on a tile 110 pixels wide on
+     a phone, and a waiter who pastes a sentence into it should get something
+     that still fits rather than a broken layout. */
+  let text = etiket === null || etiket === undefined ? null : String(etiket).replace(/\s+/g, ' ').trim();
+  if (text === '') text = null;
+  if (text && text.length > 60) text = text.slice(0, 60);
+
+  const sticky = kalici === null || kalici === undefined
+    ? Number(row.etiket_kalici) || 0
+    : (kalici ? 1 : 0);
+
+  await db.exec(
+    'UPDATE restaurant_tables SET etiket=?, etiket_kalici=?, etiket_at=?, etiket_by=? WHERE id=? AND client_id=?',
+    [text, sticky, text ? new Date() : null, text ? (userId || null) : null, tableId, clientId]);
+
+  log.info('floor', text ? 'Masa etiketi verildi' : 'Masa etiketi silindi',
+    { table: Number(tableId), by: userId || null, kalici: !!sticky });
+  return { id: Number(tableId), etiket: text || '', etiket_kalici: !!sticky };
+}
+
+/** The labels in use, so the phone can offer them as chips instead of typing. */
+async function etiketGecmisi(clientId, limit = 12) {
+  const rows = await db.query(
+    `SELECT etiket, MAX(etiket_at) AS son FROM restaurant_tables
+      WHERE client_id=? AND etiket IS NOT NULL AND etiket<>''
+      GROUP BY etiket ORDER BY son DESC LIMIT ?`, [clientId, Math.max(1, Math.min(30, Number(limit) || 12))]);
+  return rows.map(r => r.etiket);
+}
+
+/* ------------------------------------------------------------------ */
 /* karekod kartlari (QR)                                              */
 /* ------------------------------------------------------------------ */
 
@@ -1009,6 +1063,7 @@ async function setItemState(clientId, itemId, state) {
 }
 
 module.exports = {
+  setEtiket, etiketGecmisi,
   RES_STATUS, RES_MOVES, AGE_WARN, AGE_LATE, ageLevel, ageText,
   zones, saveZone, deleteZone, reorderZones,
   tables, saveTable, bulkCreate, setTableActive, moveTable, reorderTables, setSeats,
