@@ -26,21 +26,21 @@ const db = require('../db');
 
 /** §7.3 — every capability is a question that has to be answered. */
 const CAPABILITIES = {
-  basketSale:         'Bu yapilandirma amaclanan mali satisi kesebiliyor mu?',
-  cashCollection:     'Nakit bu belge akisinda temsil edilebiliyor mu?',
-  cardCollection:     'Adaptor saglanan banka uygulamasini cagirabiliyor mu?',
-  mixedTender:        'Hangi siralar, odeme turleri ve azami adet destekleniyor?',
-  mealCard:           'Hangi yemek karti uygulamasi ve hangi sepet kurallari?',
-  advanceCollection:  'Avans tahsilatini hangi belge temsil ediyor?',
-  invoiceCollection:  'Mevcut fatura ikinci bir satis olmadan nasil baglaniyor?',
-  refundAndVoid:      'Hangi bagimsiz banka ve mali islemler gerekiyor?',
-  preauthorization:   'Hem API hem uye isyeri kurulumunda acikca destekleniyor mu?',
-  queryOutcome:       'Kesilen bir islemi hangi kimlik guvenilir sekilde cozuyor?',
-  resumeDocument:     'Hangi ara durumlar yeniden toplamadan surdurulebilir?',
-  reprint:            'Var olan belge yeni satis olmadan kopyalanabiliyor mu?',
-  xReportZReport:     'Rapor okuma, rapor URETEN islemden ayri mi?',
-  eDocumentIssue:     'Hangi yetkili model, servis ve belge gecerli?',
-  offlineOperation:   'Hangi yerel, banka, mali ve senkron sartlari buna izin veriyor?',
+  basketSale:         'Bu yapılandırma amaçlanan mali satışı kesebiliyor mu?',
+  cashCollection:     'Nakit bu belge akışında temsil edilebiliyor mu?',
+  cardCollection:     'Adaptör sağlanan banka uygulamasını çağırabiliyor mu?',
+  mixedTender:        'Hangi sıralar, ödeme türleri ve azami adet destekleniyor?',
+  mealCard:           'Hangi yemek kartı uygulaması ve hangi sepet kuralları?',
+  advanceCollection:  'Avans tahsilatını hangi belge temsil ediyor?',
+  invoiceCollection:  'Mevcut fatura ikinci bir satış olmadan nasıl bağlanıyor?',
+  refundAndVoid:      'Hangi bağımsız banka ve mali işlemler gerekiyor?',
+  preauthorization:   'Hem API hem üye işyeri kurulumunda açıkça destekleniyor mu?',
+  queryOutcome:       'Kesilen bir işlemi hangi kimlik güvenilir şekilde çözüyor?',
+  resumeDocument:     'Hangi ara durumlar yeniden toplamadan sürdürülebilir?',
+  reprint:            'Var olan belge yeni satış olmadan kopyalanabiliyor mu?',
+  xReportZReport:     'Rapor okuma, rapor ÜRETEN işlemden ayrı mı?',
+  eDocumentIssue:     'Hangi yetkili model, servis ve belge geçerli?',
+  offlineOperation:   'Hangi yerel, banka, mali ve senkron şartları buna izin veriyor?',
 };
 const CAPABILITY_KEYS = Object.keys(CAPABILITIES);
 
@@ -109,7 +109,7 @@ async function assertAllowed(clientId, deviceId, { workflow = 'SALE', tenderKind
   }
   if (missing.length) {
     const e = new Error(
-      'Bu cihaz icin gerekli yetenek dogrulanmadi: ' +
+      'Bu cihaz için gerekli yetenek doğrulanmadı: ' +
       missing.map(m => `${m.capability} (${m.state})`).join(', '));
     e.status = 409; e.code = 'CAPABILITY_UNAVAILABLE'; e.missing = missing;
     throw e;
@@ -131,7 +131,7 @@ async function record(clientId, deviceId, capability, state, opts = {}) {
     const e = new Error(`Bilinmeyen durum: ${state}`); e.status = 400; throw e;
   }
   if (state === 'VERIFIED' && !opts.evidence_ref) {
-    const e = new Error('VERIFIED icin kanit referansi zorunlu (sozlesme, test raporu, uretici yazisi).');
+    const e = new Error('Doğrulandı için kanıt referansı zorunlu (sözleşme, test raporu, üretici yazısı).');
     e.status = 400; e.code = 'EVIDENCE_REQUIRED'; throw e;
   }
   await db.exec(

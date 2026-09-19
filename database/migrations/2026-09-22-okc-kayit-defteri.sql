@@ -57,7 +57,7 @@ VALUES
 ('TOKEN Finansal Teknolojiler A.S.','token','BEKO 220 TR','AS','eft_pos','Linux','retail','live_register',0,NULL),
 ('TOKEN Finansal Teknolojiler A.S.','token','BEKO 300 TR','AT','eft_pos','Linux','retail','live_register',0,NULL),
 ('TOKEN Finansal Teknolojiler A.S.','token','BEKO X30 TR','AV','eft_pos','Android 11 Go','retail','live_register',0,NULL),
-('TOKEN Finansal Teknolojiler A.S.','token','TOKEN T1 Pro','AY','eft_pos',NULL,'retail','live_register',0,'V04: harici SDK model matrisi dogrulanmadi'),
+('TOKEN Finansal Teknolojiler A.S.','token','TOKEN T1 Pro','AY','eft_pos',NULL,'retail','live_register',0,'V04: harici SDK model matrisi doğrulanmadı'),
 -- E DATA / PROPAY ------------------------------------------------------
 ('E DATA Elek. San. ve Tic. A.S.','edata','PROFILO VeriFone VX 680-E1','BCA','eft_pos','Linux','retail','live_register',0,NULL),
 ('E DATA Elek. San. ve Tic. A.S.','edata','FAREX FR-8300','BCB','computer_connected','Linux','retail','live_register',0,NULL),
@@ -68,18 +68,18 @@ VALUES
 ('E DATA Elek. San. ve Tic. A.S.','edata','Telestar TLS-7100M','BCH','computer_connected','Linux','retail','live_register',0,NULL),
 ('E DATA Elek. San. ve Tic. A.S.','edata','TELEFUNKEN TFK-A1000','BCI','computer_connected','Linux','retail','live_register',0,NULL),
 ('E DATA Elek. San. ve Tic. A.S.','edata','PROFILO S900 ECR','BCJ','eft_pos',NULL,'retail','live_register',0,NULL),
-('E DATA Elek. San. ve Tic. A.S.','edata','PROPAY P1000 ECR','BCM','eft_pos','Android 13','retail','live_register',0,'Prefix BCA ile karistirilmamali'),
+('E DATA Elek. San. ve Tic. A.S.','edata','PROPAY P1000 ECR','BCM','eft_pos','Android 13','retail','live_register',0,'Prefix BCA ile karıştırılmamalı'),
 -- HUGIN ----------------------------------------------------------------
 ('HUGIN Yazilim Teknolojileri A.S.','hugin','VERIFONE Vx675 ECR','FO','eft_pos','Verix QT650240','retail','live_register',0,NULL),
 ('HUGIN Yazilim Teknolojileri A.S.','hugin','HUGIN FT-202','FP','computer_connected','Linux 2.6','retail','live_register',0,NULL),
 ('HUGIN Yazilim Teknolojileri A.S.','hugin','HUGIN FP-300','FR','computer_connected','Linux 2.6','retail','live_register',0,NULL),
-('HUGIN Yazilim Teknolojileri A.S.','hugin','HUGIN V10','FV','eft_pos',NULL,'retail','live_register',0,'V01: X900/FS ile ayni cihaz oldugu KANITLANMADI - ayri kayit'),
+('HUGIN Yazilim Teknolojileri A.S.','hugin','HUGIN V10','FV','eft_pos',NULL,'retail','live_register',0,'V01: X900/FS ile aynı cihaz olduğu KANITLANMADI — ayrı kayıt'),
 ('HUGIN Yazilim Teknolojileri A.S.','hugin','HUGIN T300','FT','eft_pos',NULL,'retail','live_register',0,NULL),
 ('HUGIN Yazilim Teknolojileri A.S.','hugin','HUGIN S1','FU','eft_pos',NULL,'retail','live_register',0,NULL),
-('HUGIN Yazilim Teknolojileri A.S.','hugin','HUGIN X900','FS','eft_pos',NULL,'retail','pdf_only',0,'V01: canli listede yok, yalnizca resmi PDF'),
+('HUGIN Yazilim Teknolojileri A.S.','hugin','HUGIN X900','FS','eft_pos',NULL,'retail','pdf_only',0,'V01: canlı listede yok, yalnızca resmî PDF'),
 -- PAVO -----------------------------------------------------------------
-('PAVO Finansal Teknoloji Cozumleri A.S.','pavo','INGENICO iWE280','JH','eft_pos','Telium II','retail','live_register',0,'Ayni donanim Worldline altinda 2A prefixi ile ayrica kayitli'),
-('PAVO Finansal Teknoloji Cozumleri A.S.','pavo','INGENICO iDE280','JI','eft_pos','Telium II','retail','live_register',0,'Ayni donanim Worldline altinda 2B prefixi ile ayrica kayitli'),
+('PAVO Finansal Teknoloji Cozumleri A.S.','pavo','INGENICO iWE280','JH','eft_pos','Telium II','retail','live_register',0,'Aynı donanım Worldline altında 2A prefixi ile ayrıca kayıtlı'),
+('PAVO Finansal Teknoloji Cozumleri A.S.','pavo','INGENICO iDE280','JI','eft_pos','Telium II','retail','live_register',0,'Aynı donanım Worldline altında 2B prefixi ile ayrıca kayıtlı'),
 -- MIKROSARAY / inPOS ---------------------------------------------------
 ('MIKROSARAY Mikrobilgisayar Pazarlama ve Tic. A.S.','mikrosaray','MIKROSARAY Pidion MT360E','SC','eft_pos','Windows CE 6.0 CORE','retail','live_register',0,NULL),
 ('MIKROSARAY Mikrobilgisayar Pazarlama ve Tic. A.S.','mikrosaray','INFORMATIK inPOS m120','UB','eft_pos','inOS v2.0','retail','live_register',0,NULL),
@@ -87,9 +87,9 @@ VALUES
 -- INFOTEKS / FUSIONS ---------------------------------------------------
 ('INFOTEKS Bil. Elk. Tele. Med. Rek. Ith. Ihr. San. ve Tic. Ltd. STI.','infoteks','FUSIONS 410G','OF','eft_pos','Windows CE 6.0 R3','retail','live_register',0,NULL),
 -- WORLDLINE ------------------------------------------------------------
-('WORLDLINE POS Teknoloji Cozum ve Servisleri A.S.','worldline','Ingenico ECR IWE280','2A','eft_pos','Telium II','retail','live_register',0,'PAVO JH ile ayni donanim, farkli mali sahip'),
-('WORLDLINE POS Teknoloji Cozum ve Servisleri A.S.','worldline','Ingenico ECR iDE280','2B','eft_pos','Telium II','retail','live_register',0,'PAVO JI ile ayni donanim, farkli mali sahip'),
-('WORLDLINE POS Teknoloji Cozum ve Servisleri A.S.','worldline','Ingenico MOVE5000F','2C','eft_pos','Tetra','retail','live_register',0,'Referans restoranda calisan cihaz'),
+('WORLDLINE POS Teknoloji Cozum ve Servisleri A.S.','worldline','Ingenico ECR IWE280','2A','eft_pos','Telium II','retail','live_register',0,'PAVO JH ile aynı donanım, farklı mali sahip'),
+('WORLDLINE POS Teknoloji Cozum ve Servisleri A.S.','worldline','Ingenico ECR iDE280','2B','eft_pos','Telium II','retail','live_register',0,'PAVO JI ile aynı donanım, farklı mali sahip'),
+('WORLDLINE POS Teknoloji Cozum ve Servisleri A.S.','worldline','Ingenico MOVE5000F','2C','eft_pos','Tetra','retail','live_register',0,'Referans restoranda çalışan cihaz'),
 ('WORLDLINE POS Teknoloji Cozum ve Servisleri A.S.','worldline','PAX A910SF','2D','eft_pos','Android','retail','live_register',0,NULL),
 -- PANAROMA / OLIVETTI --------------------------------------------------
 ('PANAROMA Bil. Tek. San. ve Tic. A.S.','panaroma','OLIVETTI PBT 900-E','3A','computer_connected','Kernel 3.2.0','retail','live_register',0,NULL),
@@ -111,20 +111,20 @@ VALUES
 ('NCR Bilisim Sistemleri Ltd. Sti.','ncr','NCR ENC-2020','TZ','computer_connected','Linux','retail','live_register',0,NULL),
 -- TOSHIBA --------------------------------------------------------------
 ('TOSHIBA Global Commerce Solutions Turkey Teknoloji A.S.','toshiba','TOSHIBA 4610-2NF','YAB','computer_connected','Linux tabanli 32 bit','retail','live_register',0,NULL),
-('TOSHIBA Global Commerce Solutions Turkey Teknoloji A.S.','toshiba','TOSHIBA 6145-1TF','YAC','computer_connected',NULL,'retail','live_register',0,'V-not: kayit ve detay YAC diyor, devreye alirken seri dogrulanmali'),
+('TOSHIBA Global Commerce Solutions Turkey Teknoloji A.S.','toshiba','TOSHIBA 6145-1TF','YAC','computer_connected',NULL,'retail','live_register',0,'V-not: kayıt ve detay YAC diyor, devreye alırken seri doğrulanmalı'),
 -- PAYPORT --------------------------------------------------------------
 ('PAYPORT Bilisim Tek. San. ve Dis Ticaret Ltd. Sti.','payport','PAYPORT PR-810','4A','computer_connected','Embedded Linux','retail','live_register',0,NULL),
 -- PAYGO ----------------------------------------------------------------
 ('PAYGO Finansal Teknoloji Hizmetleri A.S.','paygo','PAYGO SP630PRO ECR','5B','eft_pos','Linux','retail','live_register',0,NULL),
-('PAYGO Finansal Teknoloji Hizmetleri A.S.','paygo','PAYGO N950S ECR','5C','eft_pos',NULL,'retail','live_register',0,'V02: canli listede var, onayli cihazlar PDF de yok'),
+('PAYGO Finansal Teknoloji Hizmetleri A.S.','paygo','PAYGO N950S ECR','5C','eft_pos',NULL,'retail','live_register',0,'V02: canlı listede var, onaylı cihazlar PDF''inde yok'),
 -- PAYERA ---------------------------------------------------------------
-('PAYERA Finansal Teknoloji Cozumleri A.S.','payera','PAYERA P10','6A','eft_pos','Android 10','retail','live_register',0,'V12: portal sozlesmesi P10 mali akisini kapsiyor mu belirsiz'),
+('PAYERA Finansal Teknoloji Cozumleri A.S.','payera','PAYERA P10','6A','eft_pos','Android 10','retail','live_register',0,'V12: portal sözleşmesi P10 mali akışını kapsıyor mu belirsiz'),
 -- AKARYAKIT - ayri alan, bu urunlerde teklif edilmez ---------------------
-('TOKEN Finansal Teknolojiler A.S.','token','BEKO 1000TR','AU','eft_pos',NULL,'fuel_pump','live_register',1,'Akaryakit - ayri sartname gerekir'),
-('TURPAK','turpak','TURPAK VISION','DK','eft_pos',NULL,'fuel_pump','live_register',1,'Akaryakit - ayri sartname gerekir'),
-('MEPSAN','mepsan','MEPSAN PCR 172','IF','eft_pos',NULL,'fuel_pump','live_register',1,'Akaryakit - ayri sartname gerekir'),
-('E DATA Elek. San. ve Tic. A.S.','edata','PROFILO PYK-9000','BCK','eft_pos',NULL,'fuel_pump','live_register',1,'Akaryakit - ayri sartname gerekir'),
-('E DATA Elek. San. ve Tic. A.S.','edata','PROPAY PYK-9000','BCL','eft_pos',NULL,'fuel_pump','live_register',1,'Akaryakit - ayri sartname gerekir')
+('TOKEN Finansal Teknolojiler A.S.','token','BEKO 1000TR','AU','eft_pos',NULL,'fuel_pump','live_register',1,'Akaryakıt — ayrı şartname gerekir'),
+('TURPAK','turpak','TURPAK VISION','DK','eft_pos',NULL,'fuel_pump','live_register',1,'Akaryakıt — ayrı şartname gerekir'),
+('MEPSAN','mepsan','MEPSAN PCR 172','IF','eft_pos',NULL,'fuel_pump','live_register',1,'Akaryakıt — ayrı şartname gerekir'),
+('E DATA Elek. San. ve Tic. A.S.','edata','PROFILO PYK-9000','BCK','eft_pos',NULL,'fuel_pump','live_register',1,'Akaryakıt — ayrı şartname gerekir'),
+('E DATA Elek. San. ve Tic. A.S.','edata','PROPAY PYK-9000','BCL','eft_pos',NULL,'fuel_pump','live_register',1,'Akaryakıt — ayrı şartname gerekir')
 ON DUPLICATE KEY UPDATE
   `fiscal_owner`=VALUES(`fiscal_owner`), `owner_key`=VALUES(`owner_key`),
   `brand_model`=VALUES(`brand_model`), `fiscal_class`=VALUES(`fiscal_class`),

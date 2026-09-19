@@ -58,14 +58,14 @@ async function assertDispatchAllowed(clientId, device, { workflow = 'SALE', tend
   }
   if (device.quarantine_reason) {
     const e = new Error(
-      `Bu OKC karantinada: ${device.quarantine_reason}. Cozulmemis bir islem var; `
-      + 'once Ayarlar > OKC ekranindan mutabakati tamamlayin.');
+      `Bu ÖKC karantinada: ${device.quarantine_reason}. Çözülmemiş bir işlem var; `
+      + 'önce Ayarlar › ÖKC ekranından mutabakatı tamamlayın.');
     e.status = 409; e.code = 'DEVICE_QUARANTINED'; throw e;
   }
   if (!device.production_enabled) {
     const e = new Error(
-      'Bu OKC uretim icin acilmadi. Cihaz tanimli, fakat mali islem yapabilmesi icin '
-      + 'yetenek kaniti girilip Ayarlar > OKC ekranindan uretime acilmasi gerekiyor.');
+      'Bu ÖKC üretim için açılmadı. Cihaz tanımlı, fakat mali işlem yapabilmesi için '
+      + 'yetenek kanıtı girilip Ayarlar › ÖKC kayıt defteri ekranından üretime açılması gerekiyor.');
     e.status = 409; e.code = 'PRODUCTION_NOT_ENABLED'; throw e;
   }
   await yetenek.assertAllowed(clientId, device.id, { workflow, tenderKinds });

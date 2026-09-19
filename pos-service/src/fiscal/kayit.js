@@ -55,7 +55,7 @@ async function byId(id) {
 async function matchSerial(rawSerial) {
   const serial = normalizeSerial(rawSerial);
   if (serial.length < 3) {
-    const e = new Error('Mali seri numarasi cok kisa'); e.status = 400; e.code = 'SERIAL_TOO_SHORT'; throw e;
+    const e = new Error('Mali seri numarası çok kısa'); e.status = 400; e.code = 'SERIAL_TOO_SHORT'; throw e;
   }
   // Longest registered prefix first. The registry's own prefixes are the only
   // candidates; we never invent one from the serial.
@@ -66,7 +66,7 @@ async function matchSerial(rawSerial) {
       ORDER BY CHAR_LENGTH(prefix) DESC`, [serial]);
 
   if (!rows.length) {
-    const e = new Error(`Bu mali seri hicbir kayitli cihaza uymuyor: ${serial}`);
+    const e = new Error(`Bu mali seri hiçbir kayıtlı cihaza uymuyor: ${serial}`);
     e.status = 400; e.code = 'PREFIX_UNKNOWN'; throw e;
   }
   // Two records with the SAME length prefix both matching is a genuine
@@ -75,12 +75,12 @@ async function matchSerial(rawSerial) {
   const tied = rows.filter(r => r.prefix.length === top.prefix.length);
   if (tied.length > 1) {
     const e = new Error(
-      `Bu seri birden fazla kayitli cihaza uyuyor (${tied.map(t => t.prefix).join(', ')}). ` +
-      'Cihazi listeden elle secin.');
+      `Bu seri birden fazla kayıtlı cihaza uyuyor (${tied.map(t => t.prefix).join(', ')}). ` +
+      'Cihazı listeden elle seçin.');
     e.status = 409; e.code = 'PREFIX_AMBIGUOUS'; e.candidates = tied; throw e;
   }
   if (top.rollout_blocked) {
-    const e = new Error(`${top.brand_model} akaryakit alanina ait; bu urunde kullanilamaz.`);
+    const e = new Error(`${top.brand_model} akaryakıt alanına ait; bu üründe kullanılamaz.`);
     e.status = 400; e.code = 'CATEGORY_BLOCKED'; throw e;
   }
   return { record: top, prefix: top.prefix, serial };
@@ -97,12 +97,12 @@ async function commission(clientId, deviceId, rawSerial, { registryDeviceId = nu
   let rec, prefix, serial;
   if (registryDeviceId) {
     rec = await byId(registryDeviceId);
-    if (!rec) { const e = new Error('Kayitli cihaz bulunamadi'); e.status = 404; throw e; }
+    if (!rec) { const e = new Error('Kayıtlı cihaz bulunamadı'); e.status = 404; throw e; }
     serial = normalizeSerial(rawSerial);
     if (serial && !serial.startsWith(rec.prefix)) {
       const e = new Error(
-        `Secilen cihazin prefixi ${rec.prefix}, girilen seri ise ${serial} ile basliyor. ` +
-        'Seri numarasini veya cihaz secimini duzeltin.');
+        `Seçilen cihazın prefixi ${rec.prefix}, girilen seri ise ${serial} ile başlıyor. ` +
+        'Seri numarasını veya cihaz seçimini düzeltin.');
       e.status = 400; e.code = 'PREFIX_MISMATCH'; throw e;
     }
     prefix = rec.prefix;

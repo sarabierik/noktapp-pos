@@ -22,22 +22,22 @@ const { FiscalAdapter } = require('./base');
 
 /** Every fiscal owner in the GİB retail register, and why it is blocked. */
 const BLOCKED = {
-  vera:       { name: 'VERA (MT Bilgi Teknolojileri)',  reason: 'SDK ve sozlesme alinmadi' },
-  edata:      { name: 'E DATA / Profilo / Propay',       reason: 'SDK ve sozlesme alinmadi' },
-  pavo:       { name: 'PAVO',                            reason: 'SDK ve sozlesme alinmadi' },
-  mikrosaray: { name: 'Mikrosaray / inPOS',              reason: 'SDK ve sozlesme alinmadi' },
-  infoteks:   { name: 'Infoteks / Fusions',              reason: 'SDK ve sozlesme alinmadi' },
-  worldline:  { name: 'Worldline',                       reason: 'Harici satis SDK matrisi alinmadi' },
-  panaroma:   { name: 'Panaroma / Olivetti',             reason: 'SDK ve sozlesme alinmadi' },
-  enpos:      { name: 'EnPOS',                           reason: 'SDK ve sozlesme alinmadi' },
-  ncr:        { name: 'NCR',                             reason: 'SDK ve sozlesme alinmadi' },
-  toshiba:    { name: 'Toshiba Global Commerce',         reason: 'SDK ve sozlesme alinmadi' },
-  payport:    { name: 'PayPort',                         reason: 'SDK ve sozlesme alinmadi' },
-  paygo:      { name: 'PAYGO',                           reason: 'SDK alinmadi; V02 kayit cakismasi cozulmedi' },
-  payera:     { name: 'Payera',                          reason: 'V12: portal sozlesmesi P10 mali akisini kapsiyor mu belirsiz' },
+  vera:       { name: 'VERA (MT Bilgi Teknolojileri)',  reason: 'SDK ve sözleşme alınmadı' },
+  edata:      { name: 'E DATA / Profilo / Propay',       reason: 'SDK ve sözleşme alınmadı' },
+  pavo:       { name: 'PAVO',                            reason: 'SDK ve sözleşme alınmadı' },
+  mikrosaray: { name: 'Mikrosaray / inPOS',              reason: 'SDK ve sözleşme alınmadı' },
+  infoteks:   { name: 'Infoteks / Fusions',              reason: 'SDK ve sözleşme alınmadı' },
+  worldline:  { name: 'Worldline',                       reason: 'Harici satış SDK matrisi alınmadı' },
+  panaroma:   { name: 'Panaroma / Olivetti',             reason: 'SDK ve sözleşme alınmadı' },
+  enpos:      { name: 'EnPOS',                           reason: 'SDK ve sözleşme alınmadı' },
+  ncr:        { name: 'NCR',                             reason: 'SDK ve sözleşme alınmadı' },
+  toshiba:    { name: 'Toshiba Global Commerce',         reason: 'SDK ve sözleşme alınmadı' },
+  payport:    { name: 'PayPort',                         reason: 'SDK ve sözleşme alınmadı' },
+  paygo:      { name: 'PAYGO',                           reason: 'SDK alınmadı; V02 kayıt çakışması çözülmedi' },
+  payera:     { name: 'Payera',                          reason: 'V12: portal sözleşmesi P10 mali akışını kapsıyor mu belirsiz' },
   // Fuel-pump owners: a different domain entirely, never offered here.
-  turpak:     { name: 'Turpak',  reason: 'Akaryakit alani - ayri sartname gerekir' },
-  mepsan:     { name: 'Mepsan',  reason: 'Akaryakit alani - ayri sartname gerekir' },
+  turpak:     { name: 'Turpak',  reason: 'Akaryakıt alanı — ayrı şartname gerekir' },
+  mepsan:     { name: 'Mepsan',  reason: 'Akaryakıt alanı — ayrı şartname gerekir' },
 };
 
 /**
@@ -48,10 +48,10 @@ const BLOCKED = {
 const IN_PROGRESS = ['token', 'hugin'];
 
 function unavailable(ownerKey, op) {
-  const info = BLOCKED[ownerKey] || { name: ownerKey, reason: 'Adaptor tanimli degil' };
+  const info = BLOCKED[ownerKey] || { name: ownerKey, reason: 'Adaptör tanımlı değil' };
   const e = new Error(
-    `${info.name}: ${op} yapilamaz. ${info.reason}. ` +
-    'Uretici entegrasyon paketi alindiginda bu cihaz acilir.');
+    `${info.name}: ${op} yapılamaz. ${info.reason}. ` +
+    'Üretici entegrasyon paketi alındığında bu cihaz açılır.');
   e.status = 501;
   e.code = 'SDK_NOT_OBTAINED';
   e.ownerKey = ownerKey;
@@ -69,7 +69,7 @@ class BlockedAdapter extends FiscalAdapter {
   /* ---- read-only, safe, never touches the device --------------------- */
 
   async describe() {
-    const info = BLOCKED[this.ownerKey] || { name: this.ownerKey, reason: 'Adaptor tanimli degil' };
+    const info = BLOCKED[this.ownerKey] || { name: this.ownerKey, reason: 'Adaptör tanımlı değil' };
     return {
       ownerKey: this.ownerKey,
       vendor: info.name,
@@ -81,19 +81,19 @@ class BlockedAdapter extends FiscalAdapter {
   }
 
   async inspectDevice() {
-    return { reachable: null, note: 'Bu adaptor cihaza baglanmaz.', deviceEffects: 'none' };
+    return { reachable: null, note: 'Bu adaptör cihaza bağlanmaz.', deviceEffects: 'none' };
   }
 
   /* ---- everything that could move money or paper -------------------- */
 
-  async prepare()      { throw unavailable(this.ownerKey, 'Islem hazirlama'); }
-  async dispatch()     { throw unavailable(this.ownerKey, 'Mali islem'); }
-  async queryOutcome() { throw unavailable(this.ownerKey, 'Sonuc sorgulama'); }
-  async resume()       { throw unavailable(this.ownerKey, 'Islemi surdurme'); }
-  async cancel()       { throw unavailable(this.ownerKey, 'Iptal'); }
-  async startSale()    { throw unavailable(this.ownerKey, 'Satis'); }
-  async pollSale()     { throw unavailable(this.ownerKey, 'Satis takibi'); }
-  async refund()       { throw unavailable(this.ownerKey, 'Iade'); }
+  async prepare()      { throw unavailable(this.ownerKey, 'İşlem hazırlama'); }
+  async dispatch()     { throw unavailable(this.ownerKey, 'Mali işlem'); }
+  async queryOutcome() { throw unavailable(this.ownerKey, 'Sonuç sorgulama'); }
+  async resume()       { throw unavailable(this.ownerKey, 'İşlemi sürdürme'); }
+  async cancel()       { throw unavailable(this.ownerKey, 'İptal'); }
+  async startSale()    { throw unavailable(this.ownerKey, 'Satış'); }
+  async pollSale()     { throw unavailable(this.ownerKey, 'Satış takibi'); }
+  async refund()       { throw unavailable(this.ownerKey, 'İade'); }
   async zReport()      { throw unavailable(this.ownerKey, 'Z raporu'); }
 }
 

@@ -41,6 +41,14 @@ async function refuses(fn, code, what) {
 
 (async () => {
   await bootstrap();
+  /*
+   * Start from a clean tenant. run-all.sh rebuilds the schema first, but a
+   * suite that only passes on a virgin database is a suite that will fail the
+   * first time somebody runs it twice - and then be assumed broken.
+   */
+  await db.exec('DELETE FROM fiscal_device_capabilities WHERE client_id=?', [CID]);
+  await db.exec('DELETE FROM fiscal_device_ownership WHERE client_id=?', [CID]);
+  await db.exec('DELETE FROM fiscal_devices WHERE client_id=?', [CID]);
   console.log('\nNOKTApp POS - OKC kayit defteri ve kanit modeli\n');
 
   /* ---------------------------------------------------------- registry */

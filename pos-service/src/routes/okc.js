@@ -39,8 +39,8 @@ r.get('/registry', wrap(async (req, res) => {
     devices,
     blocked_owners: engelli.BLOCKED,
     in_progress_owners: engelli.IN_PROGRESS,
-    note: 'Bu liste GIB kaydidir, uyumluluk listesi degildir. Bir cihazin burada '
-        + 'olmasi NOKTApp ile calistigi anlamina gelmez.',
+    note: 'Bu liste GİB kaydıdır, uyumluluk listesi değildir. Bir cihazın burada '
+        + 'olması NOKTApp ile çalıştığı anlamına gelmez.',
   });
 }));
 
@@ -99,7 +99,7 @@ r.post('/devices/:id/commission', wrap(async (req, res) => {
     const out = await kayit.commission(
       req.clientId, Number(req.params.id), req.body && req.body.serial,
       { registryDeviceId: req.body && req.body.registry_device_id });
-    log.info('okc', 'Cihaz devreye alindi', {
+    log.info('okc', 'Cihaz devreye alındı', {
       device: Number(req.params.id), prefix: out.prefix,
       model: out.registry.brand_model, by: req.auth && req.auth.uid });
     ok(res, out);
@@ -119,7 +119,7 @@ r.post('/devices/:id/capabilities', wrap(async (req, res) => {
   const b = req.body || {};
   try {
     const out = await yetenek.record(req.clientId, Number(req.params.id), b.capability, b.state, b);
-    log.info('okc', 'Yetenek kaydi', {
+    log.info('okc', 'Yetenek kaydı', {
       device: Number(req.params.id), capability: b.capability, state: b.state,
       evidence: b.evidence_ref || null, by: req.auth && req.auth.uid });
     ok(res, out);
@@ -140,20 +140,20 @@ r.post('/devices/:id/production', wrap(async (req, res) => {
   const id = Number(req.params.id);
   const enable = !!(req.body && req.body.enabled);
   const d = await db.one('SELECT * FROM fiscal_devices WHERE id=? AND client_id=?', [id, req.clientId]);
-  if (!d) return fail(res, 'Cihaz bulunamadi', 404);
+  if (!d) return fail(res, 'Cihaz bulunamadı', 404);
 
   if (enable) {
     if (!d.registry_device_id) {
-      return fail(res, 'Once cihazi GIB listesinden secip devreye alin.', 409, { code: 'NOT_COMMISSIONED' });
+      return fail(res, 'Önce cihazı GİB listesinden seçip devreye alın.', 409, { code: 'NOT_COMMISSIONED' });
     }
     if (String(req.body.confirm_serial || '').toUpperCase() !== String(d.serial_number || '').toUpperCase()) {
-      return fail(res, 'Onay icin cihazin seri numarasini yazin.', 400, { code: 'CONFIRMATION_REQUIRED' });
+      return fail(res, 'Onay için cihazın seri numarasını yazın.', 400, { code: 'CONFIRMATION_REQUIRED' });
     }
     const caps = await yetenek.profile(req.clientId, id);
     const sale = caps.find(c => c.capability === 'basketSale');
     if (!sale || sale.state !== 'VERIFIED') {
       return fail(res,
-        'basketSale yetenegi dogrulanmadan uretime acilamaz. Once uretici kanitini girin.',
+        'basketSale yeteneği doğrulanmadan üretime açılamaz. Önce üretici kanıtını girin.',
         409, { code: 'CAPABILITY_UNAVAILABLE' });
     }
   }
@@ -162,7 +162,7 @@ r.post('/devices/:id/production', wrap(async (req, res) => {
       WHERE id=? AND client_id=?`,
     [enable ? 1 : 0, enable ? new Date() : null, enable ? (req.auth && req.auth.uid) || null : null,
      id, req.clientId]);
-  log.info('okc', enable ? 'Cihaz uretime acildi' : 'Cihaz uretimden alindi', {
+  log.info('okc', enable ? 'Cihaz üretime açıldı' : 'Cihaz üretimden alındı', {
     device: id, serial: d.serial_number, by: req.auth && req.auth.uid });
   ok(res, { id, production_enabled: enable });
 }));
@@ -173,7 +173,7 @@ r.post('/devices/:id/quarantine', wrap(async (req, res) => {
   const reason = (req.body && req.body.reason) ? String(req.body.reason).slice(0, 190) : null;
   await db.exec('UPDATE fiscal_devices SET quarantine_reason=? WHERE id=? AND client_id=?',
     [reason, id, req.clientId]);
-  log.info('okc', reason ? 'Cihaz karantinaya alindi' : 'Karantina kaldirildi',
+  log.info('okc', reason ? 'Cihaz karantinaya alındı' : 'Karantina kaldırıldı',
     { device: id, reason, by: req.auth && req.auth.uid });
   ok(res, { id, quarantine_reason: reason });
 }));
@@ -190,26 +190,26 @@ r.post('/devices/:id/quarantine', wrap(async (req, res) => {
 r.post('/devices/:id/diagnostics', wrap(async (req, res) => {
   const id = Number(req.params.id);
   const d = await db.one('SELECT * FROM fiscal_devices WHERE id=? AND client_id=?', [id, req.clientId]);
-  if (!d) return fail(res, 'Cihaz bulunamadi', 404);
+  if (!d) return fail(res, 'Cihaz bulunamadı', 404);
 
   const checks = [];
-  checks.push({ name: 'Kayit defteri kimligi', device_effect: false,
+  checks.push({ name: 'Kayıt defteri kimliği', device_effect: false,
     pass: !!d.registry_device_id,
-    detail: d.registry_device_id ? `Prefix ${d.fiscal_prefix}` : 'Cihaz GIB listesinden secilmemis' });
-  checks.push({ name: 'Mesaj katmani dogrulandi', device_effect: false,
+    detail: d.registry_device_id ? `Prefix ${d.fiscal_prefix}` : 'Cihaz GİB listesinden seçilmemiş' });
+  checks.push({ name: 'Mesaj katmanı doğrulandı', device_effect: false,
     pass: !!d.wire_verified,
     detail: d.wire_verified ? 'wire_verified = 1'
-      : 'Uretici ECR/GMP-3 dokumani ile dogrulanmadi; simulator disinda calismaz' });
+      : 'Üretici ECR/GMP-3 dokümanı ile doğrulanmadı; simülatör dışında çalışmaz' });
   const caps = await yetenek.profile(req.clientId, id);
-  checks.push({ name: 'Yetenek kaniti', device_effect: false,
+  checks.push({ name: 'Yetenek kanıtı', device_effect: false,
     pass: caps.some(c => c.state === 'VERIFIED'),
-    detail: `${caps.filter(c => c.state === 'VERIFIED').length}/${caps.length} dogrulandi, `
+    detail: `${caps.filter(c => c.state === 'VERIFIED').length}/${caps.length} doğrulandı, `
           + `${caps.filter(c => c.state === 'UNKNOWN').length} bilinmiyor` });
   checks.push({ name: 'Karantina', device_effect: false,
     pass: !d.quarantine_reason, detail: d.quarantine_reason || 'Temiz' });
-  checks.push({ name: 'Uretim izni', device_effect: false,
+  checks.push({ name: 'Üretim izni', device_effect: false,
     pass: !!d.production_enabled,
-    detail: d.production_enabled ? 'Acik' : 'Kapali - mali islem yapilamaz' });
+    detail: d.production_enabled ? 'Açık' : 'Kapalı — mali işlem yapılamaz' });
 
   let adapter = null;
   try {
