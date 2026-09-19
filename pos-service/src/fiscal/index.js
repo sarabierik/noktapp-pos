@@ -21,8 +21,20 @@ const payments = require('../modules/payments');
 const { minor, money } = require('../util/http');
 const { SimulatorAdapter } = require('./adapters/simulator');
 const brands = require('./adapters/brands');
+const engelli = require('./adapters/engelli');
+const yetenek = require('./yetenek');
 
+/*
+ * Every fiscal owner in the GİB register resolves to SOMETHING.
+ *
+ * The blocked adapters come first so that a fiscal owner we have not
+ * integrated cannot silently fall through to SimulatorAdapter and report a
+ * successful sale that never happened. The named routes below deliberately
+ * overwrite their blocked entries — they are the ones with a started
+ * implementation, still gated by fiscal_devices.wire_verified in gmp3.js.
+ */
 const ADAPTERS = {
+  ...engelli.blockedAdapters(),
   simulator: SimulatorAdapter,
   ingenico: brands.IngenicoAdapter,
   hugin: brands.HuginAdapter,
@@ -31,6 +43,33 @@ const ADAPTERS = {
   beko: brands.BekoAdapter,
   olivetti: brands.OlivettiAdapter,
 };
+
+/**
+ * Everything that must be true before a device may be asked for money.
+ *
+ * Checked BEFORE the transaction row is written, so a refusal leaves no
+ * half-open sale behind and no lock to clean up. Each failure names the exact
+ * reason; "cihaz hazir degil" on its own is a support call nobody can answer.
+ */
+async function assertDispatchAllowed(clientId, device, { workflow = 'SALE', tenderKinds = [] } = {}) {
+  if (String(device.environment || '').toLowerCase() === 'simulator'
+      || String(device.provider || '').toLowerCase() === 'simulator') {
+    return;                     // the simulator is allowed, and says so on every receipt
+  }
+  if (device.quarantine_reason) {
+    const e = new Error(
+      `Bu OKC karantinada: ${device.quarantine_reason}. Cozulmemis bir islem var; `
+      + 'once Ayarlar > OKC ekranindan mutabakati tamamlayin.');
+    e.status = 409; e.code = 'DEVICE_QUARANTINED'; throw e;
+  }
+  if (!device.production_enabled) {
+    const e = new Error(
+      'Bu OKC uretim icin acilmadi. Cihaz tanimli, fakat mali islem yapabilmesi icin '
+      + 'yetenek kaniti girilip Ayarlar > OKC ekranindan uretime acilmasi gerekiyor.');
+    e.status = 409; e.code = 'PRODUCTION_NOT_ENABLED'; throw e;
+  }
+  await yetenek.assertAllowed(clientId, device.id, { workflow, tenderKinds });
+}
 
 function adapterFor(device) {
   const Klass = ADAPTERS[String(device.provider || 'simulator').toLowerCase()] || SimulatorAdapter;
@@ -182,6 +221,16 @@ async function beginSale(clientId, orderId, { method, amount, installments = 0, 
   if (!order) { const e = new Error('Adisyon bulunamadi'); e.status = 404; throw e; }
   const device = await activeDevice(clientId, cashRegisterId);
   if (!device) { const e = new Error('Tanimli OKC cihazi yok'); e.status = 400; throw e; }
+  /*
+   * Refuse here, before any row is written and before the bill is locked. A
+   * device that is not production-enabled, is quarantined, or has no verified
+   * capability for this tender must never reach the point of having an open
+   * transaction attached to it.
+   */
+  await assertDispatchAllowed(clientId, device, {
+    workflow: 'SALE',
+    tenderKinds: [String(method || '').toUpperCase() === 'CASH' ? 'CASH' : 'CARD'],
+  });
 
   const amt = money(amount || order.due);
   const idem = crypto.createHash('sha256')
@@ -409,6 +458,7 @@ async function deviceReport(clientId, kind = 'X') {
   return out;
 }
 
-module.exports = { ADAPTERS, adapterFor, deviceTables, listDevices, saveDevice, testDevice, beginSale, poll,
+module.exports = {
+  assertDispatchAllowed, ADAPTERS, adapterFor, deviceTables, listDevices, saveDevice, testDevice, beginSale, poll,
   getTransaction, cancel, refund, deviceReport, isEnabled, requireEnabled, activeDevice,
   acquireLock, releaseLock };

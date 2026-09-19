@@ -225,6 +225,7 @@ mount('/api/till', require('./routes/till'));
 mount('/api/pricing', require('./routes/pricing'));
 mount('/api/guest', require('./routes/guest'));
 mount('/api/device', require('./routes/device'), ['id', 'deviceId']);
+mount('/api/okc', require('./routes/okc'), ['id']);
 mount('/api/qr', require('./routes/qr'));
 mount('/api/mobile', require('./routes/mobile'));
 mount('/api/integrations', require('./routes/integrations'));
