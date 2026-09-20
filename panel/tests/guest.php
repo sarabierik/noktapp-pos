@@ -1,4 +1,20 @@
 <?php
+/*
+ * COMMAND LINE ONLY.
+ *
+ * These suites create tenants, delete rows and rebuild fixtures. They are
+ * written to be run with `php panel/tests/<name>.php` from a shell, against a
+ * sandbox database. Nothing stops them being uploaded to public_html by
+ * accident along with the rest of the panel, and a file sitting there is a URL
+ * anybody on the internet can open - which would let a stranger create and
+ * delete tenants on the live panel by loading a page.
+ *
+ * So the first line of every one of them refuses to run over HTTP, and answers
+ * 404 rather than 403: a refusal that says "something is here" is an
+ * invitation to look harder.
+ */
+if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
+
 /**
  * NOKTApp POS - the guest API, the half the NOKTA phone app talks to.
  *
@@ -138,6 +154,22 @@ $prog->execute([$TB, 3, 22, '6 bira 1 bizden',  6, 'Bir bira bizden',  'Efes',  
 $prog->execute([$TB, 9, 23, 'Kapali kampanya',  5, 'Hicbir sey',       'Kola',       40.00, 0]);
 $prog->execute([$TS, 3, 31, 'Kapali restoran',  4, 'Hicbir sey',       'Lahmacun',   60.00, 1]);
 
+/* The legacy web-POS campaign table. It belongs to the old product and a
+   sandbox registry may not carry it, but this suite needs it present in order
+   to prove the legacy join still works - so it is created here rather than
+   assumed, exactly as the real pass_db has it. */
+$P->exec("CREATE TABLE IF NOT EXISTS `loyalty_programs` (
+    `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+    `client_id` int(11) NOT NULL,
+    `product_id` int(10) UNSIGNED DEFAULT NULL,
+    `title` varchar(190) NOT NULL,
+    `target_count` int(10) UNSIGNED NOT NULL DEFAULT 10,
+    `reward_text` varchar(190) NOT NULL,
+    `is_active` tinyint(1) NOT NULL DEFAULT 1,
+    `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+    PRIMARY KEY (`id`),
+    KEY `idx_lp_client` (`client_id`,`is_active`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 $P->prepare("DELETE FROM loyalty_programs WHERE client_id=?")->execute([$TL]);
 $P->prepare("INSERT INTO loyalty_programs (client_id, product_id, title, target_count, reward_text, is_active)
              VALUES (?,?,?,?,?,1)")->execute([$TL, 44, '8 kahve 1 bizden', 8, 'Bir kahve bizden']);

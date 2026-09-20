@@ -1,4 +1,20 @@
 <?php
+/*
+ * COMMAND LINE ONLY.
+ *
+ * These suites create tenants, delete rows and rebuild fixtures. They are
+ * written to be run with `php panel/tests/<name>.php` from a shell, against a
+ * sandbox database. Nothing stops them being uploaded to public_html by
+ * accident along with the rest of the panel, and a file sitting there is a URL
+ * anybody on the internet can open - which would let a stranger create and
+ * delete tenants on the live panel by loading a page.
+ *
+ * So the first line of every one of them refuses to run over HTTP, and answers
+ * 404 rather than 403: a refusal that says "something is here" is an
+ * invitation to look harder.
+ */
+if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
+
 /**
  * NOKTApp POS - chain layer, section 6: consolidated reporting.
  *
