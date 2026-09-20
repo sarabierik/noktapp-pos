@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Android launch plate is the SAME colour as NOKTA's first Flutter frame.
+     A white plate under a dark app flashes on every cold start, and that flash
+     is the first thing a guest sees. -->
+<resources>
+    <color name="launch_bg">#0B0B0F</color>
+</resources>

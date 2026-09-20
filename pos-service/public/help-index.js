@@ -863,6 +863,22 @@ registerHelp([
     ],
     see: ['isletme', 'kasa', 'fis'] },
 
+  { page: 'okcdefter', title: 'ÖKC kayıt defteri',
+    lead: 'GİB\'in yayımladığı onaylı yazarkasa listesi ve cihazınızın o listede nereye düştüğü.',
+    steps: [
+      'Kayıt defteri sekmesinde onaylı marka/model listesini görün; arama kutusu seri numarası önekine göre de arar.',
+      'Cihazlar sekmesinde kayıtlı cihazlarınız ve her birinin defterdeki karşılığı listelenir.',
+      'Yetenek sekmesinde bir cihazın hangi işlemleri yapabildiği yazar: DOĞRULANDI, DESTEKLENMİYOR veya BİLİNMİYOR.',
+      'Teşhis sekmesi cihaza hiçbir komut göndermeden ayarların tutarlı olup olmadığını söyler.',
+    ],
+    notes: [
+      'BİLİNMİYOR bir yetenek "muhtemelen çalışır" demek değildir; o işlem kapalıdır. Bir restoran neyin çalışmadığını misafir karşısında öğrenmemelidir.',
+      'Bir cihaz "üretim" durumuna alınmadan gerçek mali fiş kesemez ve üretime almak seri numarasının elle doğrulanmasını ister.',
+      'Cihazın markası ile sürücüsü aynı şey değildir: donanımı üreten firma ile mali sahibi çoğu zaman farklıdır. Ekran hangi sürücüyü önerdiğini ve bunun doğrulanıp doğrulanmadığını yazar.',
+      'Listedeki kayıtlar GİB yayınından alınmıştır; bir markanın listede olması bizim o cihaza bağlanabildiğimiz anlamına gelmez.',
+    ],
+    see: ['okc', 'cihazlar', 'fis'] },
+
   { page: 'yedek', title: 'Yedekleme',
     lead: 'Verinin kopyaları ve gerektiğinde geri yüklenmesi. Bu programda kaybolan bir ayı geri getirebilecek tek ekran budur.',
     steps: [

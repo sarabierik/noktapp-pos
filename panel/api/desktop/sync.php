@@ -2,6 +2,7 @@
 /** Summaries and day-end figures pushed up by the restaurant PC. */
 require_once __DIR__ . '/../../lib/api.php';
 require_once __DIR__ . '/../../lib/rapor.php';
+require_once __DIR__ . '/../../lib/pass_tables.php';
 $in = json_in();
 $t = require_licence($in);
 touch_device((int)$t['id'], $in);
@@ -60,21 +61,7 @@ foreach (($in['items'] ?? []) as $item) {
         $pass = pass_db();
         if ($pass) {
             try {
-                $pass->exec(
-                    "CREATE TABLE IF NOT EXISTS `np_tenant_programs` (
-                       `tenant_id`     int(11) NOT NULL,
-                       `program_id`    int(10) UNSIGNED NOT NULL,
-                       `product_id`    int(10) UNSIGNED DEFAULT NULL,
-                       `title`         varchar(190) NOT NULL,
-                       `target_count`  int(10) UNSIGNED NOT NULL DEFAULT 10,
-                       `reward_text`   varchar(190) NOT NULL,
-                       `product_name`  varchar(190) DEFAULT NULL,
-                       `product_price` decimal(10,2) DEFAULT NULL,
-                       `is_active`     tinyint(1) NOT NULL DEFAULT 1,
-                       `updated_at`    datetime NOT NULL DEFAULT current_timestamp()
-                                       ON UPDATE current_timestamp(),
-                       PRIMARY KEY (`tenant_id`,`program_id`)
-                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                pass_ensure_tables($pass);
 
                 $st = $pass->prepare(
                     "INSERT INTO np_tenant_programs
@@ -100,6 +87,58 @@ foreach (($in['items'] ?? []) as $item) {
                     ]);
                 }
             } catch (Throwable $e) { error_log('program mirror: ' . $e->getMessage()); }
+        }
+        q('INSERT INTO np_reports (tenant_id, entity, entity_id, payload) VALUES (?,?,?,?)
+           ON DUPLICATE KEY UPDATE payload=VALUES(payload), created_at=NOW()',
+          [$t['id'], $entity, $eid, $payload]);
+
+    } elseif ($entity === 'loyalty_events') {
+        /* The guest's own movement history at this one restaurant.
+         *
+         * Same key problem as the programmes, same answer: loyalty_events
+         * auto-increments per till, so event 41 exists at every restaurant we
+         * have ever sold to. The mirror is keyed by (tenant, event_id) and the
+         * till's local id is carried rather than replaced, so a re-sent row
+         * updates itself and nothing else.
+         *
+         * Read-only from our side. We never write events; the till does, at the
+         * counter, while the guest is standing there.
+         */
+        $pass = pass_db();
+        $p = $item['payload'] ?? [];
+        $customerId = (int)($p['customer_id'] ?? 0);
+        if ($pass && $customerId > 0) {
+            try {
+                pass_ensure_tables($pass);
+
+                $st = $pass->prepare(
+                    "INSERT INTO np_guest_events
+                        (tenant_id, event_id, customer_id, program_id, card_id, kind, qty,
+                         order_id, product_name, program_title, happened_at, mirrored_at)
+                     VALUES (?,?,?,?,?,?,?,?,?,?,?,NOW())
+                     ON DUPLICATE KEY UPDATE program_id=VALUES(program_id), card_id=VALUES(card_id),
+                         kind=VALUES(kind), qty=VALUES(qty), order_id=VALUES(order_id),
+                         product_name=VALUES(product_name), program_title=VALUES(program_title),
+                         happened_at=VALUES(happened_at), mirrored_at=NOW()");
+                foreach (($p['events'] ?? []) as $ev) {
+                    $evId = (int)($ev['id'] ?? 0);
+                    $when = (string)($ev['created_at'] ?? '');
+                    if ($evId <= 0 || $when === '') continue;
+                    $ts = strtotime($when);
+                    if ($ts === false) continue;
+                    $kind = in_array(($ev['kind'] ?? ''), ['stamp', 'reward', 'adjust'], true)
+                            ? $ev['kind'] : 'stamp';
+                    $st->execute([
+                        $t['id'], $evId, $customerId, (int)($ev['program_id'] ?? 0),
+                        isset($ev['card_id']) && $ev['card_id'] !== null ? (int)$ev['card_id'] : null,
+                        $kind, (int)($ev['qty'] ?? 1),
+                        isset($ev['order_id']) && $ev['order_id'] !== null ? (int)$ev['order_id'] : null,
+                        isset($ev['product_name']) ? mb_substr((string)$ev['product_name'], 0, 190) : null,
+                        isset($ev['program_title']) ? mb_substr((string)$ev['program_title'], 0, 190) : null,
+                        date('Y-m-d H:i:s', $ts),
+                    ]);
+                }
+            } catch (Throwable $e) { error_log('event mirror: ' . $e->getMessage()); }
         }
         q('INSERT INTO np_reports (tenant_id, entity, entity_id, payload) VALUES (?,?,?,?)
            ON DUPLICATE KEY UPDATE payload=VALUES(payload), created_at=NOW()',

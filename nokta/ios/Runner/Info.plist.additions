@@ -1,0 +1,25 @@
+<!--
+  What has to be in ios/Runner/Info.plist for NOKTA.
+
+  It is a short list on purpose. The guest app has no local-network discovery,
+  no Bonjour service and no camera, so none of the keys the waiter app needs
+  apply here - and every one of them omitted is one fewer permission prompt and
+  one fewer question at review.
+
+  `bash tools/ios-izinler.sh` writes all of this with PlistBuddy after
+  `flutter create --platforms=ios .` on the Mac. This file is the record of
+  what that script writes.
+-->
+
+<key>CFBundleDisplayName</key>
+<string>NOKTA</string>
+
+<key>UIUserInterfaceStyle</key>
+<string>Dark</string>
+
+<!-- Portrait only. This is a card held up at a counter; there is nothing on
+     any screen that a landscape phone shows better. -->
+<key>UISupportedInterfaceOrientations</key>
+<array>
+  <string>UIInterfaceOrientationPortrait</string>
+</array>

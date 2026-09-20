@@ -16,9 +16,37 @@ let timer = null;
 let busy = false;
 let inFlight = null;
 
+/**
+ * Entities whose payload is the WHOLE current state of one thing, not a change
+ * to it.
+ *
+ * For these, two pending rows with the same entity_id are not two facts - they
+ * are the same fact written twice, and the older one is simply wrong. So a new
+ * push replaces any pending row it supersedes instead of queueing behind it.
+ *
+ * This is not a tidiness measure. The drain sends fifty rows at a time, and
+ * loyalty pushes three entities every time a cashier stamps a card. Without
+ * collapsing, a busy hour puts the till's newest balances behind hundreds of
+ * stale copies of themselves, and the guest's phone shows a number from
+ * twenty minutes ago - which is the same complaint as showing nothing.
+ *
+ * qr_token_used is deliberately NOT here: each row is one code being spent at
+ * one restaurant, and collapsing two of them would silently un-burn a code.
+ * integration_order is per order, so its entity_id is already unique.
+ */
+const SNAPSHOT = new Set(['loyalty_cards', 'loyalty_programs', 'loyalty_events',
+                          'daily_summary', 'qr_menu']);
+
 async function push(entity, entityId, payload, op = 'upsert') {
   const clientId = await db.getClientId();
   if (!clientId) return null;
+  if (SNAPSHOT.has(entity)) {
+    /* Only PENDING rows. A row already sent is history and the panel has it;
+       rewriting it would make the outbox lie about what was pushed and when. */
+    await db.exec(
+      "DELETE FROM np_sync_outbox WHERE client_id=? AND entity=? AND entity_id=? AND status='pending'",
+      [clientId, entity, String(entityId)]);
+  }
   return db.insert(
     'INSERT INTO np_sync_outbox (client_id, entity, entity_id, op, payload, status, created_at) VALUES (?,?,?,?,?,\'pending\',NOW())',
     [clientId, entity, String(entityId), op, JSON.stringify(payload)]);
@@ -48,25 +76,46 @@ async function drain() {
   busy = true;
   inFlight = (async () => {
   try {
-    const rows = await db.query("SELECT * FROM np_sync_outbox WHERE status='pending' AND attempts < 10 ORDER BY id LIMIT 50");
-    if (!rows.length) return;
     const lic = await db.one('SELECT client_id, licence_key FROM np_licence WHERE id=1');
     if (!lic) return;
     const url = (await licence.panelUrl()) + '/api/desktop/sync.php';
-    const res = await licence.post(url, {
-      client_id: lic.client_id,
-      licence_key: lic.licence_key,
-      device_id: await licence.deviceId(),
-      items: rows.map(r => ({ id: r.id, entity: r.entity, entity_id: r.entity_id, op: r.op, payload: safe(r.payload) })),
-    }, 30000);
-    if (res.status === 200 && res.body && res.body.ok) {
-      const okIds = res.body.accepted || rows.map(r => r.id);
-      if (okIds.length) {
-        await db.exec(`UPDATE np_sync_outbox SET status='sent', sent_at=NOW() WHERE id IN (${okIds.map(() => '?').join(',')})`, okIds);
+    /*
+     * Keep going until the outbox is empty.
+     *
+     * One batch per call was the old behaviour and it is wrong in both
+     * directions. A caller that awaits drain() - the loyalty round trip does -
+     * was told the work was done while its own row was still pending, because
+     * the batch had filled up with rows written before it. And a till that has
+     * been off the line for a day cleared fifty rows a minute, so the panel
+     * stayed hours behind for no reason.
+     *
+     * Bounded, because unbounded is how a till spends its evening talking to
+     * us instead of serving tables. Forty batches is two thousand rows per
+     * call; the next minute's tick takes the rest.
+     */
+    for (let batch = 0; batch < 40; batch++) {
+      const rows = await db.query(
+        "SELECT * FROM np_sync_outbox WHERE status='pending' AND attempts < 10 ORDER BY id LIMIT 50");
+      if (!rows.length) return;
+      const res = await licence.post(url, {
+        client_id: lic.client_id,
+        licence_key: lic.licence_key,
+        device_id: await licence.deviceId(),
+        items: rows.map(r => ({ id: r.id, entity: r.entity, entity_id: r.entity_id, op: r.op, payload: safe(r.payload) })),
+      }, 30000);
+      if (res.status === 200 && res.body && res.body.ok) {
+        const okIds = res.body.accepted || rows.map(r => r.id);
+        if (okIds.length) {
+          await db.exec(`UPDATE np_sync_outbox SET status='sent', sent_at=NOW() WHERE id IN (${okIds.map(() => '?').join(',')})`, okIds);
+        }
+        log.debug('sync', 'pushed ' + okIds.length + ' rows');
+        /* A panel that accepted nothing is not going to accept the same rows on
+           the next turn round the loop either - stop rather than spin. */
+        if (!okIds.length) return;
+      } else {
+        await bump(rows, (res.body && res.body.error) || 'panel rejected');
+        return;
       }
-      log.debug('sync', 'pushed ' + okIds.length + ' rows');
-    } else {
-      await bump(rows, (res.body && res.body.error) || 'panel rejected');
     }
   } catch (e) {
     log.debug('sync', 'push failed', e.message);

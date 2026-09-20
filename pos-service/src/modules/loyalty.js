@@ -478,6 +478,35 @@ async function pushPrograms(clientId) {
   return require('../sync').push('loyalty_programs', String(clientId), { programs });
 }
 
+/**
+ * Push the guest's own movement history at THIS restaurant.
+ *
+ * Kartlarim shows a number; Gecmis has to show how the number got there -
+ * "3 pul, 14 Eylul, Adana Kebap" - and nothing outside this PC knows that.
+ * loyalty_events lives locally and is never read by the cloud, so without
+ * this the guest app's history screen has no source at all and would either
+ * be empty or invented.
+ *
+ * Only this customer's rows, only the last fifty of them, and only from this
+ * restaurant: a guest's movements at another shop are that shop's business.
+ * The panel upserts by (tenant, event_id), so re-sending is free and a
+ * re-sent row cannot land on another restaurant's event with the same local
+ * id.
+ */
+async function pushEvents(clientId, customerId) {
+  const events = await db.query(
+    `SELECT le.id, le.program_id, le.card_id, le.kind, le.qty, le.order_id, le.created_at,
+            p.name AS product_name, lp.title AS program_title
+       FROM loyalty_events le
+       LEFT JOIN products p ON p.id = le.product_id AND p.client_id = le.client_id
+       LEFT JOIN loyalty_programs lp ON lp.id = le.program_id AND lp.client_id = le.client_id
+      WHERE le.client_id=? AND le.customer_id=?
+      ORDER BY le.id DESC LIMIT 50`, [clientId, customerId]);
+  if (!events.length) return null;
+  return require('../sync').push('loyalty_events', `${clientId}:${customerId}`,
+    { customer_id: customerId, events });
+}
+
 /** Let the guest's phone app see the same numbers the till just wrote. */
 async function pushStamps(clientId, customerId, orderId) {
   const cards = await cardsFor(clientId, customerId);
@@ -487,6 +516,7 @@ async function pushStamps(clientId, customerId, orderId) {
    * send one, and its guests would keep seeing an empty list.
    */
   await pushPrograms(clientId).catch(() => {});
+  await pushEvents(clientId, customerId).catch(() => {});
   return require('../sync').push('loyalty_cards', `${clientId}:${customerId}`,
     { customer_id: customerId, order_id: orderId, cards });
 }
@@ -584,7 +614,7 @@ function errorText(code) {
 }
 
 module.exports = {
-  pushPrograms,
+  pushPrograms, pushEvents,
   trPhone, trPhoneOk, trPhoneVariants, findByPhone, resolve, enrol, cacheCustomer,
   programs, cardsFor, applyToOrder, awardForOrder, redeem, addStampIn,
   programReport, totals, redemptions, errorText,

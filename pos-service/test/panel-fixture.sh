@@ -93,7 +93,7 @@ echo "Rebuilding $SHARED_DB…"
 $M -e "DROP DATABASE IF EXISTS \`$SHARED_DB\`; CREATE DATABASE \`$SHARED_DB\` CHARACTER SET utf8mb4" || exit 1
 php -r '
 $src = file_get_contents($argv[1]) . file_get_contents($argv[2]);
-foreach (["customers", "loyalty_qr_tokens", "loyalty_cards"] as $t) {
+foreach (["customers", "loyalty_qr_tokens", "loyalty_cards", "loyalty_programs"] as $t) {
     if (preg_match("/CREATE TABLE `{$t}` \(.*?\) ENGINE[^;]*;/s", $src, $m)) echo $m[0], "\n";
     if (preg_match("/ALTER TABLE `{$t}`\s+ADD PRIMARY KEY[^;]*;/s", $src, $m)) echo $m[0], "\n";
     if (preg_match("/ALTER TABLE `{$t}`\s+MODIFY[^;]*;/s", $src, $m)) echo $m[0], "\n";
