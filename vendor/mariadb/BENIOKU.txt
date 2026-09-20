@@ -1,0 +1,9 @@
+Bu klasor bilerek bos.
+
+Windows'ta MOTOR-HAZIRLA.ps1 calistirilirsa MariaDB motoru buraya indirilir ve
+kurulumun icinde tasinir. Baska bir makinede yapilan derlemede klasor bos
+kalir; bu durumda motor, tillin ilk acilisinda
+  C:\ProgramData\NoktAppPOS\mariadb
+altina indirilir ve program guncellemeleri onu bir daha indirmez.
+
+Ikisi de main.js icinde, o siraya gore aranir.

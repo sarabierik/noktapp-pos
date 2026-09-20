@@ -1350,6 +1350,68 @@ function providerCatalogue() {
 
 function providerByKey(key) { return PROVIDERS.find(p => p.key === String(key || '').toLowerCase()) || null; }
 
+/**
+ * The GİB register, for the "Cihaz ekle" dialog.
+ *
+ * PROVIDERS above is the list of DRIVERS we have written. This is the list of
+ * DEVICES that legally exist. They are not the same list and conflating them is
+ * what let a cashier pick "Hugin" for a Profilo: one fiscal owner can cover
+ * several brands, and the same brand can sit under two owners.
+ *
+ * The dialog asks for the device; the driver follows from it.
+ */
+/*
+ * Fiscal owner -> the driver we have written, where the two have different
+ * names.
+ *
+ * This map exists because the obvious rule is wrong. The MOVE5000F's fiscal
+ * owner is WORLDLINE; the hardware is Ingenico; the driver is called
+ * `ingenico`. Matching on the name alone found nothing and silently left the
+ * form on whatever was already selected.
+ *
+ * Every entry here is a SUGGESTION, never a claim. The specification is blunt
+ * about it: one company can supply several protocol families, and the same
+ * hardware maker appears under several fiscal owners, so the adapter belongs
+ * to evidence-backed configuration rather than to a brand name. The screen
+ * says so, and the capability profile still has to be proven per device.
+ */
+const OWNER_DRIVER_HINT = {
+  token:     { driver: 'token',    basis: 'Token firmware - aynı mali sahip' },
+  hugin:     { driver: 'hugin',    basis: 'Hugin firmware - aynı mali sahip' },
+  worldline: { driver: 'ingenico', basis: 'Donanım Ingenico; sürücü Ingenico için yazıldı' },
+  pavo:      { driver: 'ingenico', basis: 'Donanım Ingenico; sürücü Ingenico için yazıldı' },
+  panaroma:  { driver: 'olivetti', basis: 'Olivetti cihazları; sürücü Olivetti için yazıldı' },
+};
+
+async function registryCatalogue() {
+  const kayit = require('../fiscal/kayit');
+  const rows = await kayit.all(null, { includeFuel: false });
+  /*
+   * A suggestion has to be a driver the dialog can actually select.
+   * `worldline` exists in PROVIDERS with status 'planned', which means no
+   * adapter was ever written and the dropdown filters it out - so naming it
+   * set the select to a value that was not in the list, and the form quietly
+   * stayed on whatever was already chosen. Selectability, not existence.
+   */
+  const usable = (key) => {
+    const p = providerByKey(key);
+    return p && p.status !== 'planned' ? key : null;
+  };
+  return rows.map(r => {
+    const direct = usable(r.owner_key);
+    const hint = OWNER_DRIVER_HINT[r.owner_key];
+    const suggested = direct || (hint ? usable(hint.driver) : null);
+    return {
+      id: r.id, fiscal_owner: r.fiscal_owner, owner_key: r.owner_key,
+      brand_model: r.brand_model, prefix: r.prefix, fiscal_class: r.fiscal_class,
+      evidence_kind: r.evidence_kind, note: r.note,
+      driver: suggested,
+      driver_exact: !!direct,
+      driver_basis: direct ? null : (hint ? hint.basis : null),
+    };
+  });
+}
+
 async function listDevices(clientId) {
   const devices = await db.query(
     `SELECT d.*, r.name AS register_name FROM fiscal_devices d
@@ -1372,6 +1434,29 @@ async function listDevices(clientId) {
  * refused outright.
  */
 async function saveDevice(clientId, data) {
+  /*
+   * If the dialog sent a register record, that record is the authority: it
+   * decides the fiscal owner and the expected serial prefix. A Worldline
+   * serial saved as a PAVO device is two different legal entities sharing one
+   * row, and nothing downstream can untangle it afterwards.
+   */
+  let registryRec = null;
+  if (data.registry_device_id) {
+    const kayit = require('../fiscal/kayit');
+    registryRec = await kayit.byId(data.registry_device_id);
+    if (!registryRec) throw bad('Seçilen GİB kaydı bulunamadı.');
+    if (registryRec.rollout_blocked) {
+      throw bad(`${registryRec.brand_model} akaryakıt alanına ait; bu üründe kullanılamaz.`);
+    }
+    const ser = String(data.serial_number || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (ser && !ser.startsWith(registryRec.prefix)) {
+      throw bad(`Seçilen cihazın mali prefixi ${registryRec.prefix}, girilen seri ${ser} ile başlıyor. `
+        + 'Seri numarasını veya cihaz seçimini düzeltin.');
+    }
+    if (!data.provider) data.provider = registryRec.owner_key;
+    if (!data.device_model) data.device_model = registryRec.brand_model;
+  }
+
   const prov = providerByKey(data.provider);
   if (!prov) throw bad('Bilinmeyen ÖKC sağlayıcısı: ' + data.provider);
   if (prov.status === 'planned') {
@@ -1397,6 +1482,8 @@ async function saveDevice(clientId, data) {
 
   const id = await fiscal.saveDevice(clientId, {
     ...data,
+    registry_device_id: registryRec ? registryRec.id : (data.registry_device_id || null),
+    fiscal_prefix: registryRec ? registryRec.prefix : null,
     provider: prov.key,
     environment: env,
     serial_number: serial,
@@ -1415,6 +1502,14 @@ async function saveDevice(clientId, data) {
   }
   if (prov.key === 'simulator') {
     warnings.push('Simülatör mali fiş kesmez ve GİB\'e hiçbir şey bildirmez. Yalnızca eğitim ve deneme içindir.');
+  }
+  if (!registryRec && prov.key !== 'simulator') {
+    warnings.push('Cihaz GİB kayıt listesinden seçilmedi. Ayarlar › ÖKC kayıt defteri ekranından '
+      + 'gerçek modeli seçerseniz mali seri prefixi de doğrulanır.');
+  }
+  if (registryRec && registryRec.evidence_kind === 'pdf_only') {
+    warnings.push(`${registryRec.brand_model} canlı GİB listesinde görünmüyor, yalnızca resmî PDF'te var. `
+      + 'Devreye almadan önce kaydı teyit edin.');
   }
   return { id, warnings, provider: { ...prov, status_label: STATUS_LABEL[prov.status] } };
 }
@@ -1744,6 +1839,7 @@ async function selfCheck(clientId) {
 }
 
 module.exports = {
+  registryCatalogue,
   // catalogue
   GROUPS, DEFS, BY_KEY, PROTECTED, coerce, catalogue, all, save, history,
   // users

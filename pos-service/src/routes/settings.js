@@ -246,6 +246,7 @@ r.post('/print-jobs/:id/cancel', canPrinters, guard(async (req, res) => {
 r.get('/okc', canSettings, guard(async (req, res) => ok(res, {
   devices: await settings.listDevices(req.clientId),
   providers: settings.providerCatalogue(),
+  registry: await settings.registryCatalogue(),
   registers: await settings.listRegisters(req.clientId),
   fiscal_enabled: String(await require('../db').getSetting('fiscal_enabled', '0')) === '1',
 })));

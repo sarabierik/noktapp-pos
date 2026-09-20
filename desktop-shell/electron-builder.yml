@@ -38,6 +38,18 @@ nsis:
   # A cosmetic NSIS warning must not fail a customer's build. Real errors
   # still stop it; this only stops warning 6000 and friends from being fatal.
   warningsAsErrors: false
+
+  # Branding. Without these four lines NSIS draws its own 1990s blue ribbon,
+  # which is what every build from 3.7.1 to 3.9.0 shipped: correct software
+  # behind a wizard that looks like nobody owns it. A restaurant owner watching
+  # you install it reads that as the whole product.
+  #   installerSidebar  164x314 BMP - the welcome and finish pages
+  #   installerHeader   150x57  BMP - the strip on every inner page
+  installerIcon: assets/icon.ico
+  uninstallerIcon: assets/icon.ico
+  installerSidebar: assets/installerSidebar.bmp
+  uninstallerSidebar: assets/installerSidebar.bmp
+  installerHeader: assets/installerHeader.bmp
   oneClick: false
   perMachine: true
   allowToChangeInstallationDirectory: true

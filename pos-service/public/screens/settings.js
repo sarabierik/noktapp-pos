@@ -1003,11 +1003,37 @@ Screens.add({
   okcDeviceForm(d, ctx) {
     d = d || {};
     const selectable = ctx.providers.filter(p => p.selectable);
+    /*
+     * The GİB record comes first, and the driver follows from it.
+     *
+     * "Marka" used to be the driver list - seven names we happened to have
+     * written code for. A cashier holding a Telestar TLS-8100 found nothing
+     * that said Telestar and picked whatever looked closest, which is how a
+     * device ends up commissioned as a different manufacturer's product. The
+     * register below is the list of machines that legally exist; choosing one
+     * sets the fiscal owner, fills the model, and tells the serial field which
+     * prefix it must start with.
+     */
+    const reg = (ctx.registry || []);
+    const byOwner = {};
+    reg.forEach(x => (byOwner[x.fiscal_owner] = byOwner[x.fiscal_owner] || []).push(x));
     modal(`<div class="modal__head"><h3>${d.id ? 'ÖKC cihazı' : 'ÖKC cihazı ekle'}</h3></div>
       <div class="modal__body">
         <div id="dfAlert"></div>
+        <div class="field"><label>Cihaz — GİB kayıt listesi (${reg.length} model)</label>
+          <select class="input" id="dfReg2">
+            <option value="">— listeden seçin, ya da aşağıdan sürücüyü elle seçin —</option>
+            ${Object.keys(byOwner).sort().map(o => `<optgroup label="${esc(o)}">
+              ${byOwner[o].map(x => `<option value="${x.id}" data-owner="${esc(x.owner_key)}"
+                 data-prefix="${esc(x.prefix)}" data-model="${esc(x.brand_model)}"
+                 data-driver="${x.driver ? esc(x.driver) : ''}" data-exact="${x.driver_exact ? 1 : 0}"
+                 data-basis="${esc(x.driver_basis || '')}"${Number(d.registry_device_id) === x.id ? ' selected' : ''}
+                 >${esc(x.brand_model)} · ${esc(x.prefix)}</option>`).join('')}
+            </optgroup>`).join('')}
+          </select></div>
+        <div id="dfRegNote"></div>
         <div class="split-2">
-          <div class="field"><label>Marka</label><select class="input" id="dfProv">
+          <div class="field"><label>Sürücü</label><select class="input" id="dfProv">
             ${selectable.map(p => `<option value="${p.key}"${d.provider === p.key ? ' selected' : ''}>${esc(p.label)}</option>`).join('')}
           </select></div>
           <div class="field"><label>Ortam</label><select class="input" id="dfEnv">
@@ -1048,12 +1074,43 @@ Screens.add({
       if (env.selectedOptions[0] && env.selectedOptions[0].disabled) env.value = 'test';
       if (p.defaultPort && !$('#dfPort').value) $('#dfPort').value = p.defaultPort;
     };
-    $('#dfProv').onchange = note; note();
+    $('#dfProv').onchange = note;
+
+    /* Choosing a real device drives the rest of the form. */
+    const regPick = () => {
+      const o = $('#dfReg2').selectedOptions[0];
+      if (!o || !o.value) { $('#dfRegNote').innerHTML = ''; note(); return; }
+      const owner = o.dataset.owner, prefix = o.dataset.prefix;   // eslint-disable-line no-unused-vars
+      const driver = o.dataset.driver || '';
+      const hasDriver = !!driver;
+      if (!$('#dfModel').value || $('#dfModel').dataset.auto === '1') {
+        $('#dfModel').value = o.dataset.model; $('#dfModel').dataset.auto = '1';
+      }
+      $('#dfSerial').placeholder = prefix + '…';
+      if (hasDriver) {
+        const opt = Array.from($('#dfProv').options).find(x => x.value === driver);
+        if (opt) $('#dfProv').value = driver;
+        const exact = o.dataset.exact === '1';
+        $('#dfRegNote').innerHTML = `<div class="alert ${exact ? 'alert--info' : 'alert--warn'}">
+          Mali seri <b>${esc(prefix)}</b> ile başlamalı.
+          ${exact ? 'Sürücü bu mali sahibe göre seçildi.'
+                  : `Sürücü <b>önerildi</b>, doğrulanmadı — ${esc(o.dataset.basis || '')}.
+                     Gerçek cihazda denemeden üretime açmayın.`}</div>`;
+      } else {
+        $('#dfRegNote').innerHTML = `<div class="alert alert--warn">Bu mali sahip için henüz sürücü yok
+          (SDK alınmadı). Cihazı kaydedebilirsiniz; mali işlem yapamaz. Mali seri
+          <b>${esc(prefix)}</b> ile başlamalı.</div>`;
+      }
+      note();
+    };
+    $('#dfReg2').onchange = regPick;
+    if ($('#dfReg2').value) regPick(); else note();
 
     $('#dfOk').onclick = async () => {
       try {
         const out = await api('POST', '/api/settings/okc/devices', {
           id: d.id, provider: $('#dfProv').value, environment: $('#dfEnv').value,
+          registry_device_id: $('#dfReg2').value ? Number($('#dfReg2').value) : null,
           device_model: $('#dfModel').value, serial_number: $('#dfSerial').value,
           device_ip: $('#dfIp').value, device_port: $('#dfPort').value ? Number($('#dfPort').value) : null,
           merchant_id: $('#dfMerchant').value, terminal_id: $('#dfTerm').value,
