@@ -43,6 +43,68 @@ foreach (($in['items'] ?? []) as $item) {
            ON DUPLICATE KEY UPDATE payload=VALUES(payload), created_at=NOW()',
           [$t['id'], $entity, $eid, $payload]);
 
+    } elseif ($entity === 'loyalty_programs') {
+        /* The campaign definitions behind the cards.
+         *
+         * NOT written into pass_db.loyalty_programs. That table's primary key
+         * is `id` alone and it auto-increments per database, so every desktop
+         * till has a programme 1, 2, 3 of its own. Writing a till's local id
+         * straight in would let one restaurant's campaign overwrite another
+         * restaurant's - silently, and with the guest's card still pointing at
+         * the row. So desktop tenants get their own table, keyed by the pair
+         * that is actually unique: (tenant, the till's own program id).
+         *
+         * Legacy web-POS tenants keep using loyalty_programs exactly as before
+         * and are untouched by any of this.
+         */
+        $pass = pass_db();
+        if ($pass) {
+            try {
+                $pass->exec(
+                    "CREATE TABLE IF NOT EXISTS `np_tenant_programs` (
+                       `tenant_id`     int(11) NOT NULL,
+                       `program_id`    int(10) UNSIGNED NOT NULL,
+                       `product_id`    int(10) UNSIGNED DEFAULT NULL,
+                       `title`         varchar(190) NOT NULL,
+                       `target_count`  int(10) UNSIGNED NOT NULL DEFAULT 10,
+                       `reward_text`   varchar(190) NOT NULL,
+                       `product_name`  varchar(190) DEFAULT NULL,
+                       `product_price` decimal(10,2) DEFAULT NULL,
+                       `is_active`     tinyint(1) NOT NULL DEFAULT 1,
+                       `updated_at`    datetime NOT NULL DEFAULT current_timestamp()
+                                       ON UPDATE current_timestamp(),
+                       PRIMARY KEY (`tenant_id`,`program_id`)
+                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+                $st = $pass->prepare(
+                    "INSERT INTO np_tenant_programs
+                        (tenant_id, program_id, product_id, title, target_count, reward_text,
+                         product_name, product_price, is_active, updated_at)
+                     VALUES (?,?,?,?,?,?,?,?,?,NOW())
+                     ON DUPLICATE KEY UPDATE product_id=VALUES(product_id), title=VALUES(title),
+                         target_count=VALUES(target_count), reward_text=VALUES(reward_text),
+                         product_name=VALUES(product_name), product_price=VALUES(product_price),
+                         is_active=VALUES(is_active), updated_at=NOW()");
+                foreach (($item['payload']['programs'] ?? []) as $pr) {
+                    $pid = (int)($pr['id'] ?? 0);
+                    if ($pid <= 0) continue;
+                    $st->execute([
+                        $t['id'], $pid,
+                        isset($pr['product_id']) && $pr['product_id'] !== null ? (int)$pr['product_id'] : null,
+                        mb_substr((string)($pr['title'] ?? ''), 0, 190),
+                        max(1, (int)($pr['target_count'] ?? 10)),
+                        mb_substr((string)($pr['reward_text'] ?? ''), 0, 190),
+                        isset($pr['product_name']) ? mb_substr((string)$pr['product_name'], 0, 190) : null,
+                        isset($pr['product_price']) ? (float)$pr['product_price'] : null,
+                        !empty($pr['is_active']) ? 1 : 0,
+                    ]);
+                }
+            } catch (Throwable $e) { error_log('program mirror: ' . $e->getMessage()); }
+        }
+        q('INSERT INTO np_reports (tenant_id, entity, entity_id, payload) VALUES (?,?,?,?)
+           ON DUPLICATE KEY UPDATE payload=VALUES(payload), created_at=NOW()',
+          [$t['id'], $entity, $eid, $payload]);
+
     } elseif ($entity === 'qr_token_used') {
         /* A one-time code has been spent at this restaurant. Burn it centrally
            so it cannot be scanned again at another one. */

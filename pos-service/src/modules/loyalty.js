@@ -455,9 +455,38 @@ async function redeem(clientId, { customerId, cardId, orderId = null, userId = n
   });
 }
 
+/**
+ * Push the CAMPAIGN DEFINITIONS up, not just the balances.
+ *
+ * This is the fix for a bug that threw away real work. The till pushed
+ * loyalty_cards faithfully - progress_count, rewards_available, every stamp -
+ * but never pushed loyalty_programs. So the cloud knew "customer 412 has 4 of
+ * something at restaurant 88" and had no idea what the something was. The
+ * guest's app joins cards to programmes, found no programme, dropped the row,
+ * and showed "Henüz kartın yok" to somebody who had four stamps.
+ *
+ * Programmes are small and change rarely, so the whole set goes up together
+ * rather than one row at a time; the panel upserts by (tenant, program_id).
+ */
+async function pushPrograms(clientId) {
+  const programs = await db.query(
+    `SELECT lp.id, lp.product_id, lp.title, lp.target_count, lp.reward_text, lp.is_active,
+            p.name AS product_name, p.price AS product_price
+       FROM loyalty_programs lp
+       LEFT JOIN products p ON p.id = lp.product_id AND p.client_id = lp.client_id
+      WHERE lp.client_id=?`, [clientId]);
+  return require('../sync').push('loyalty_programs', String(clientId), { programs });
+}
+
 /** Let the guest's phone app see the same numbers the till just wrote. */
 async function pushStamps(clientId, customerId, orderId) {
   const cards = await cardsFor(clientId, customerId);
+  /*
+   * Programmes ride along with every stamp push. A restaurant that set its
+   * campaign up months ago and never touched it again would otherwise never
+   * send one, and its guests would keep seeing an empty list.
+   */
+  await pushPrograms(clientId).catch(() => {});
   return require('../sync').push('loyalty_cards', `${clientId}:${customerId}`,
     { customer_id: customerId, order_id: orderId, cards });
 }
@@ -555,6 +584,7 @@ function errorText(code) {
 }
 
 module.exports = {
+  pushPrograms,
   trPhone, trPhoneOk, trPhoneVariants, findByPhone, resolve, enrol, cacheCustomer,
   programs, cardsFor, applyToOrder, awardForOrder, redeem, addStampIn,
   programReport, totals, redemptions, errorText,

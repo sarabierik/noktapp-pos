@@ -653,6 +653,9 @@ async function saveProgram(clientId, data = {}) {
     reward_text: reward.slice(0, 190),
     is_active: data.is_active === false || data.is_active === 0 ? false : true,
   });
+  // the guest's app reads the campaign text from the cloud, so a rename that
+  // never leaves this PC is a rename the customer never sees
+  require('./loyalty').pushPrograms(clientId).catch(() => {});
   return { id: Number(id) };
 }
 
@@ -662,6 +665,7 @@ async function toggleProgram(clientId, id) {
     [Number(id) || 0, clientId]);
   if (!n) throw bad('Program bulunamadı', 404);
   const p = await db.one('SELECT is_active FROM loyalty_programs WHERE id=?', [Number(id)]);
+  require('./loyalty').pushPrograms(clientId).catch(() => {});
   return { id: Number(id), is_active: Number(p.is_active) };
 }
 
