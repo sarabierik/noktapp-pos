@@ -7,6 +7,7 @@
 /// not update for a year still has to be able to open the app and see their
 /// cards. A screen that throws because a field arrived null is a screen that is
 /// blank for a reason the guest cannot act on.
+library;
 
 int _i(dynamic v) {
   if (v is int) return v;
