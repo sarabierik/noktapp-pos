@@ -39,6 +39,9 @@ r.get('/registry', wrap(async (req, res) => {
     devices,
     blocked_owners: engelli.BLOCKED,
     in_progress_owners: engelli.IN_PROGRESS,
+    /* Where each started protocol came from, and what is still unproven about
+       it. "Started" is not one state - see PROTOCOL_SOURCE in engelli.js. */
+    protocol_source: engelli.PROTOCOL_SOURCE,
     note: 'Bu liste GİB kaydıdır, uyumluluk listesi değildir. Bir cihazın burada '
         + 'olması NOKTApp ile çalıştığı anlamına gelmez.',
   });
@@ -74,12 +77,28 @@ r.get('/devices', wrap(async (req, res) => {
         brand_model: d.brand_model, fiscal_owner: d.fiscal_owner,
         fiscal_class: d.fiscal_class, evidence_kind: d.evidence_kind, note: d.registry_note,
       } : null,
-      evidence: {
-        registry_observation: d.evidence_kind || (d.registry_device_id ? 'live_register' : 'not_commissioned'),
-        documentation_access: engelli.BLOCKED[d.provider] ? 'not_obtained'
-                              : engelli.IN_PROGRESS.includes(d.provider) ? 'partial' : 'unknown',
-        implementation_state: d.wire_verified ? 'laboratory_tested' : 'design_only',
-      },
+      /*
+       * Three INDEPENDENT facts, never collapsed into one badge. A device can
+       * be in GİB's register (observation), have a published protocol we have
+       * implemented (documentation + implementation), and still have never
+       * printed a receipt for us (proof). Only the last one entitles anybody
+       * to take money with it.
+       */
+      evidence: (() => {
+        const src = engelli.PROTOCOL_SOURCE[d.provider] || null;
+        return {
+          registry_observation: d.evidence_kind || (d.registry_device_id ? 'live_register' : 'not_commissioned'),
+          documentation_access: engelli.BLOCKED[d.provider] ? 'not_obtained'
+                                : src ? (src.source === 'vendor_documented' ? 'vendor_published' : 'none_designed')
+                                : 'unknown',
+          protocol_ref: src ? src.ref : null,
+          contract: src ? src.contract : 'unknown',
+          implementation_state: d.wire_verified ? 'laboratory_tested'
+                                : src && src.source === 'vendor_documented' ? 'written_to_vendor_doc'
+                                : 'design_only',
+          device_proven: !!d.wire_verified,
+        };
+      })(),
       production_enabled: !!d.production_enabled,
       production_enabled_at: d.production_enabled_at,
       wire_verified: !!d.wire_verified,
@@ -165,6 +184,103 @@ r.post('/devices/:id/production', wrap(async (req, res) => {
   log.info('okc', enable ? 'Cihaz üretime açıldı' : 'Cihaz üretimden alındı', {
     device: id, serial: d.serial_number, by: req.auth && req.auth.uid });
   ok(res, { id, production_enabled: enable });
+}));
+
+/* ---------------------------------------------------------------- pairing */
+
+/**
+ * HUGIN PC Link pairing — the "hello world" that teaches the till the serial.
+ *
+ * Two things happen on the device first, and neither can be done from here:
+ * the cashier opens Uygulama Merkezi → Entegrasyon → PC Link, and types the
+ * VKN from the Hugin integration contract. The device then shows its address
+ * and waits. This endpoint is the other half of that handshake.
+ *
+ * What it records, and why each one:
+ *   serial_number        the device's mali sicil no, which it tells us
+ *   pclink_sfa_version   which firmware answered, so capability evidence can
+ *                        say what it was evidence OF
+ *   pclink_cert_sha256   the certificate to demand from now on
+ *
+ * Re-pairing an already-paired device requires confirm_serial, the same way
+ * opening production does. A silent re-pair would let a till be moved onto a
+ * different terminal - or an impostor - with one click and no trace.
+ */
+r.post('/devices/:id/pair', wrap(async (req, res) => {
+  const id = Number(req.params.id);
+  const d = await db.one('SELECT * FROM fiscal_devices WHERE id=? AND client_id=?', [id, req.clientId]);
+  if (!d) return fail(res, 'Cihaz bulunamadı', 404);
+  if (String(d.provider || '').toLowerCase() !== 'hugin') {
+    return fail(res, 'Eşleşme yalnızca Hugin PC Link cihazları içindir.', 400,
+      { code: 'PAIR_NOT_SUPPORTED' });
+  }
+
+  const softwareId = String((req.body && req.body.software_id) || d.pclink_software_id || '').trim();
+  if (!/^\d{10,11}$/.test(softwareId)) {
+    return fail(res, 'Hugin entegrasyon sözleşmenizdeki VKN gerekli (10-11 hane).', 400,
+      { code: 'SOFTWARE_ID_REQUIRED' });
+  }
+  const hardwareId = String((req.body && req.body.hardware_id) || d.pclink_hardware_id
+    || require('../fiscal/adapters/hugin').primaryMac() || '').trim();
+  if (!hardwareId) {
+    return fail(res, 'Bu bilgisayarın MAC adresi okunamadı; Donanım kimliğini elle girin.', 400,
+      { code: 'HARDWARE_ID_REQUIRED' });
+  }
+
+  /* An already-paired device is a deliberate, confirmed change. */
+  if (d.pclink_cert_sha256 && String(req.body.confirm_serial || '').toUpperCase()
+        !== String(d.serial_number || '').toUpperCase()) {
+    return fail(res, 'Bu cihaz zaten eşleşmiş. Yeniden eşleştirmek için seri numarasını yazın.',
+      409, { code: 'CONFIRMATION_REQUIRED' });
+  }
+
+  const { HuginPcLinkAdapter } = require('../fiscal/adapters/hugin');
+  const adapter = new HuginPcLinkAdapter({
+    ...d,
+    device_ip: (req.body && req.body.device_ip) || d.device_ip,
+    device_port: (req.body && req.body.device_port) || d.device_port || 4443,
+    pclink_software_id: softwareId,
+    pclink_hardware_id: hardwareId,
+    pclink_cert_sha256: null,          // pairing is where the pin is LEARNED
+    serial_number: null,
+  });
+
+  let paired;
+  try { paired = await adapter.pair(); }
+  catch (e) {
+    log.warn('okc', 'Hugin eşleşmesi başarısız', { device: id, code: e.code, message: e.message });
+    return fail(res, e.message, e.status || 502, { code: e.code || 'PAIR_FAILED' });
+  }
+
+  await db.exec(
+    `UPDATE fiscal_devices
+        SET serial_number=?, serial_raw=?, pclink_software_id=?, pclink_hardware_id=?,
+            pclink_cert_sha256=?, pclink_cert_subject=?, pclink_sfa_version=?,
+            pclink_paired_at=NOW(), device_ip=?, device_port=?
+      WHERE id=? AND client_id=?`,
+    [paired.serialNo, paired.serialNo, softwareId, hardwareId,
+     paired.certSha256, paired.certSubject, paired.sfaVersion,
+     adapter.host, adapter.port, id, req.clientId]);
+
+  log.info('okc', 'Hugin cihazı eşleşti', {
+    device: id, serial: paired.serialNo, sfa: paired.sfaVersion,
+    by: req.auth && req.auth.uid });
+
+  /*
+   * Pairing is NOT permission to trade. production_enabled and the capability
+   * profile are untouched here on purpose: the device now answers us, which is
+   * a different and much smaller claim than "this device may print a legal
+   * receipt for money".
+   */
+  ok(res, {
+    id,
+    serial_number: paired.serialNo,
+    sfa_version: paired.sfaVersion,
+    cert_sha256: paired.certSha256,
+    cert_subject: paired.certSubject,
+    production_enabled: !!d.production_enabled,
+    note: 'Eşleşme tamamlandı. Üretime açmak ayrı bir adımdır ve yetenek kanıtı ister.',
+  });
 }));
 
 /** Quarantine: a device with an unresolved operation must not take more money. */

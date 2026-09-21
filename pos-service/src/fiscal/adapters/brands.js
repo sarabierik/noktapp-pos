@@ -20,18 +20,32 @@ class IngenicoAdapter extends Gmp3Adapter {
   get name() { return 'ingenico'; }
 }
 
-class HuginAdapter extends Gmp3Adapter {
-  constructor(device, o = {}) {
-    super(device, {
-      defaultPort: 7500,
-      fieldMap: { command: 'cmd', payload: 'params', sessionId: 'transactionId' },
-      ...o,
-    });
-  }
-  get name() { return 'hugin'; }
-}
+/*
+ * HUGIN IS NO LONGER A GUESS.
+ *
+ * It used to be Gmp3Adapter on port 7500 with command names ('cmd', 'params',
+ * 'transactionId') that I made up. Hugin publishes its protocol at
+ * developer.hugin.com.tr and it is nothing like that: HTTPS REST on port 4443,
+ * three identity headers, POST/PUT on /v1/documents, and no DLL at all. The
+ * real client is in adapters/hugin.js and every field in it is quoted from
+ * that documentation.
+ */
+const { HuginPcLinkAdapter } = require('./hugin');
+const HuginAdapter = HuginPcLinkAdapter;
 
-class ProfiloAdapter extends HuginAdapter {           // Profilo devices are Hugin firmware
+/*
+ * Profilo is a SEPARATE QUESTION and stays where it was.
+ *
+ * The old comment here said "Profilo devices are Hugin firmware" and had
+ * Profilo inherit Hugin's behaviour. That was an assumption, and now that
+ * Hugin's adapter is real the assumption would have become a claim: that a
+ * Profilo device answers PC Link on 4443. The documentation I have is Hugin's
+ * and says nothing about Profilo. So Profilo keeps the unverified GMP-3 path,
+ * which cannot reach a device until somebody sets wire_verified - the correct
+ * state for a protocol nobody has confirmed.
+ */
+class ProfiloAdapter extends Gmp3Adapter {
+  constructor(device, o = {}) { super(device, { defaultPort: 7500, ...o }); }
   get name() { return 'profilo'; }
 }
 

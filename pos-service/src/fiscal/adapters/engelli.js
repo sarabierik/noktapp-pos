@@ -41,11 +41,60 @@ const BLOCKED = {
 };
 
 /**
- * Owners with a documented route that we have STARTED, but whose message layer
- * is still unproven. They are not in BLOCKED because the GMP-3 client exists;
- * they are gated by fiscal_devices.wire_verified instead (see gmp3.js).
+ * Owners we have started on. Not in BLOCKED, and not finished either.
  */
-const IN_PROGRESS = ['token', 'hugin'];
+const IN_PROGRESS = ['token', 'hugin', 'profilo'];
+
+/**
+ * WHERE EACH STARTED PROTOCOL CAME FROM.
+ *
+ * "In progress" covers two states that must never be confused, and the day
+ * Hugin's real documentation arrived is the day collapsing them became
+ * dangerous:
+ *
+ *   vendor_documented — every endpoint, header and field is quoted from the
+ *                       manufacturer's own published protocol. Hugin publishes
+ *                       PC Link openly; adapters/hugin.js is written to it.
+ *   designed_guess    — the framing and command names are MINE, written to a
+ *                       plausible shape because no specification was in hand.
+ *                       adapters/gmp3.js says so at the top of the file.
+ *
+ * Neither one means a device has ever answered. `deviceProven` is the separate
+ * fact, and it is false for all of them: reading a specification correctly and
+ * having a terminal print a legal receipt are different claims, and only the
+ * second one is worth anything to a restaurant being audited.
+ *
+ * `contract` is the third, legal fact. GİB's GMP regulation requires a signed
+ * integration agreement between the sales software and the manufacturer before
+ * any of this may touch a production device, so a perfect adapter with no
+ * contract is still not allowed to trade.
+ */
+const PROTOCOL_SOURCE = {
+  hugin: {
+    source: 'vendor_documented',
+    ref: 'developer.hugin.com.tr — PC Link API v1 (okundu 2026-09-21)',
+    transport: 'HTTPS REST :4443',
+    deviceProven: false,
+    contract: 'required_not_signed',
+    note: 'Iptal / iade / X-Z uc noktalari Postman referansinda; henuz elimizde degil.',
+  },
+  token: {
+    source: 'designed_guess',
+    ref: null,
+    transport: 'TCP :7600 (varsayim)',
+    deviceProven: false,
+    contract: 'required_not_signed',
+    note: 'Cerceveleme ve komut adlari tasarim; uretici dokumani alinmadi.',
+  },
+  profilo: {
+    source: 'designed_guess',
+    ref: null,
+    transport: 'TCP :7500 (varsayim)',
+    deviceProven: false,
+    contract: 'required_not_signed',
+    note: 'Hugin firmware oldugu VARSAYILIYORDU; dogrulanmadi, PC Link iddia edilmiyor.',
+  },
+};
 
 function unavailable(ownerKey, op) {
   const info = BLOCKED[ownerKey] || { name: ownerKey, reason: 'Adaptör tanımlı değil' };
@@ -108,4 +157,4 @@ function blockedAdapters() {
   return out;
 }
 
-module.exports = { BLOCKED, IN_PROGRESS, BlockedAdapter, blockedAdapters, unavailable };
+module.exports = { BLOCKED, IN_PROGRESS, PROTOCOL_SOURCE, BlockedAdapter, blockedAdapters, unavailable };

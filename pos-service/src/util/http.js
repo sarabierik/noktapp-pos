@@ -1,8 +1,25 @@
 'use strict';
 /** Small helpers so every route handler looks the same. */
 function ok(res, data = {}) { res.json({ ok: true, ...data }); }
+/**
+ * A refusal the caller can act on.
+ *
+ * The fourth argument is normally the machine-readable code as a STRING. It
+ * also accepts an object, because some refusals carry more than a code and the
+ * screen needs it: an ambiguous ÖKC serial prefix has to come back with its
+ * candidate list or the cashier is told "belirsiz" and given nothing to
+ * choose from.
+ *
+ * Passing an object used to nest it under `code`, so clients comparing
+ * `code === 'PREFIX_AMBIGUOUS'` silently never matched and the candidates
+ * never arrived. Both shapes now produce a flat `code` string plus whatever
+ * else was sent.
+ */
 function fail(res, message, status = 400, code = null) {
-  res.status(status).json({ ok: false, error: message, code });
+  const body = { ok: false, error: message, code: null };
+  if (code && typeof code === 'object') Object.assign(body, code);
+  else body.code = code;
+  res.status(status).json(body);
 }
 /** Wrap an async handler so a rejected promise becomes a 500 instead of a hang. */
 function wrap(fn) {
