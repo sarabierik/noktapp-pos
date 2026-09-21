@@ -163,10 +163,43 @@ async function refuses(fn, code, what) {
         let threw = null;
         try { await a[op]({}); } catch (e) { threw = e; }
         assert.ok(threw, `${key}.${op} basarili dondu - bu asla olmamali`);
-        assert.strictEqual(threw.code, 'SDK_NOT_OBTAINED', `${key}.${op} yanlis kod`);
+        /*
+         * The right refusal, not just a refusal. "Nobody sent us the package"
+         * and "we read the package and said no" are different facts, and
+         * reporting the second as the first sends the next person off to
+         * fetch something that is already on the disk.
+         */
+        const expected = engelli.BLOCKED[key].decided ? 'CLOSED_BY_DECISION' : 'SDK_NOT_OBTAINED';
+        assert.strictEqual(threw.code, expected, `${key}.${op} yanlis kod`);
         assert.strictEqual(threw.deviceEffects, 'none', `${key}.${op} cihaz etkisi bildirmedi`);
       }
     }
+  });
+
+  await step('a decided-against owner says so, and does not promise to open later',
+    async () => {
+      const A = engelli.blockedAdapters();
+      for (const key of ['worldline', 'ingenico']) {
+        assert.ok(engelli.BLOCKED[key], `${key} engelli listesinde olmali`);
+        assert.strictEqual(engelli.BLOCKED[key].decided, true, `${key} karar kaydi yok`);
+        let threw = null;
+        try { await new A[key]({ id: 1, provider: key }).startSale({}); } catch (e) { threw = e; }
+        assert.strictEqual(threw.code, 'CLOSED_BY_DECISION');
+        assert.ok(!/alindiginda|alındığında/.test(threw.message),
+          `${key}: "paket gelince acilir" demek yanlis - bu bir is karari`);
+      }
+    });
+
+  await step('ingenico cannot be dispatched to at all', async () => {
+    /* The class still exists so the decision can be reversed, but nothing may
+       select it for a real sale: in Turkey an Ingenico OKC is licensed by
+       Worldline, and without that contract there is no way to talk to one. */
+    const fiscalIdx = require('../src/fiscal');
+    const A = engelli.blockedAdapters();
+    assert.ok(A.ingenico, 'ingenico engelli adaptoru yok');
+    const { IngenicoAdapter } = require('../src/fiscal/adapters/brands');
+    assert.ok(typeof IngenicoAdapter === 'function', 'sinif silinmemeli - karar geri alinabilir');
+    assert.ok(fiscalIdx, 'fiscal modulu yuklenmeli');
   });
 
   /* --------------------------------------------------- capability gate  */

@@ -27,7 +27,38 @@ const BLOCKED = {
   pavo:       { name: 'PAVO',                            reason: 'SDK ve sözleşme alınmadı' },
   mikrosaray: { name: 'Mikrosaray / inPOS',              reason: 'SDK ve sözleşme alınmadı' },
   infoteks:   { name: 'Infoteks / Fusions',              reason: 'SDK ve sözleşme alınmadı' },
-  worldline:  { name: 'Worldline',                       reason: 'Harici satış SDK matrisi alınmadı' },
+  /*
+   * WORLDLINE VE INGENICO - TICARI KARAR, EKSIK SDK DEGIL.
+   *
+   * Worldline'in GMP3 paketi 21.09.2026'da incelendi: teklif, sozlesme, DLL
+   * on bilgilendirmesi, surec ve satin alma dokumanlari. Teknik olarak
+   * mumkun; is modeli olarak kabul edilmedi ve NOKTApp bu yolu KULLANMAYACAK.
+   *
+   * Karari veren sebepler, bir daha acilmasin diye buraya yaziliyor:
+   *   - Hash, uygulama + DLL uzerinden aliniyor ve "kod uzerindeki en ufak bir
+   *     gelistirmede dahi" degisiyor; degisince sahadaki her cihaz duruyor.
+   *     Sozlesme ayrica takvim yilinda en fazla 2 sistem degisikligi
+   *     istenebilecegini soyluyor (Madde 4.2). Haftada surum cikaran bir
+   *     urunle bagdasmiyor.
+   *   - Cihaz basina AYLIK ucret var ve fiyati Worldline tek tarafli
+   *     degistirebiliyor (Madde 6).
+   *   - Yemek kartlari ve sadakat 3. grup: ayri ticari sozlesme (Madde 1).
+   *     Multinet alamayan bir restoran kasasi restoran kasasi degildir.
+   *   - Worldline sozlesmeyi 1 ay onceden, gerekce gostermeden ve tazminatsiz
+   *     feshedebiliyor; feshedince BAGLI TUM cihazlarin GMP3 lisansi uzaktan
+   *     kapatiliyor (Madde 3, Madde 10).
+   *
+   * Ingenico da buraya dusuyor cunku Turkiye'de Ingenico ODK'lari WORLDLINE
+   * lisanslidir: GMP3 sozlesmesi olmadan bir Ingenico cihazina konusmanin
+   * yolu yok. Adaptor sinifi (brands.IngenicoAdapter) duruyor - karar geri
+   * alinirsa diye - ama gonderim icin secilemez.
+   *
+   * Bunu geri acmak bir kod degisikligi degil, bir is kararidir.
+   */
+  worldline:  { name: 'Worldline', decided: true,
+                reason: 'Ticari karar: GMP3 sozlesmesi kullanilmayacak (21.09.2026)' },
+  ingenico:   { name: 'Ingenico (Worldline lisansli)', decided: true,
+                reason: 'Ticari karar: Worldline GMP3 sozlesmesi kullanilmayacak (21.09.2026)' },
   panaroma:   { name: 'Panaroma / Olivetti',             reason: 'SDK ve sözleşme alınmadı' },
   enpos:      { name: 'EnPOS',                           reason: 'SDK ve sözleşme alınmadı' },
   ncr:        { name: 'NCR',                             reason: 'SDK ve sözleşme alınmadı' },
@@ -96,13 +127,22 @@ const PROTOCOL_SOURCE = {
   },
 };
 
+/**
+ * Two different refusals, and they must not share a code.
+ *
+ * SDK_NOT_OBTAINED means "nobody has sent us the package yet" - a gap that
+ * closes by itself the day it arrives. CLOSED_BY_DECISION means somebody
+ * looked at the package and said no. Reporting the second as the first invites
+ * the next person to go and fetch a package that is already sitting on the
+ * disk, and to reopen a commercial decision as if it were an errand.
+ */
 function unavailable(ownerKey, op) {
   const info = BLOCKED[ownerKey] || { name: ownerKey, reason: 'Adaptör tanımlı değil' };
   const e = new Error(
-    `${info.name}: ${op} yapılamaz. ${info.reason}. ` +
-    'Üretici entegrasyon paketi alındığında bu cihaz açılır.');
+    `${info.name}: ${op} yapılamaz. ${info.reason}.`
+    + (info.decided ? '' : ' Üretici entegrasyon paketi alındığında bu cihaz açılır.'));
   e.status = 501;
-  e.code = 'SDK_NOT_OBTAINED';
+  e.code = info.decided ? 'CLOSED_BY_DECISION' : 'SDK_NOT_OBTAINED';
   e.ownerKey = ownerKey;
   e.deviceEffects = 'none';
   return e;

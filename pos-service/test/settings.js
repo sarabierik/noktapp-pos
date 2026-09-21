@@ -586,14 +586,29 @@ function probeValue(def, current) {
     for (const p of r.providers) by[p.key] = p;
     assert.strictEqual(by.simulator.status, 'ready', 'the simulator is the one thing that really works');
     assert.strictEqual(by.token.status, 'beta', 'token is implemented but unverified');
-    for (const stub of ['hugin', 'profilo', 'beko', 'ingenico', 'olivetti']) {
+    /* Hugin is 'beta' rather than 'sdk' because there is no SDK to obtain -
+       the manufacturer publishes the protocol. Implemented, unverified. */
+    assert.strictEqual(by.hugin.status, 'beta', 'hugin is misdescribed');
+    for (const stub of ['profilo', 'beko', 'olivetti']) {
       assert.strictEqual(by[stub].status, 'sdk', stub + ' is presented as finished');
       assert.ok(by[stub].note.length > 20, stub + ' has no explanation');
-      assert.strictEqual(by[stub].allows_production, false, stub + ' would be allowed in production');
     }
-    for (const missing of ['paygo', 'worldline']) {
+    /* NOTHING except the simulator may be pointed at a real shop, because
+       nothing except the simulator has ever been proven against hardware. */
+    for (const p of r.providers) {
+      if (p.key === 'simulator') continue;
+      assert.strictEqual(p.allows_production, false, p.key + ' would be allowed in production');
+    }
+    for (const missing of ['paygo']) {
       assert.strictEqual(by[missing].status, 'planned', missing + ' claims to exist');
       assert.strictEqual(by[missing].selectable, false, missing + ' is offered for selection');
+    }
+    /* Decided against, which is not the same as unwritten and must not read
+       as "coming soon" in the dropdown. */
+    for (const closed of ['worldline', 'ingenico']) {
+      assert.strictEqual(by[closed].status, 'closed', closed + ' is not marked as a decision');
+      assert.strictEqual(by[closed].selectable, false, closed + ' is offered for selection');
+      assert.ok(/karar/i.test(by[closed].note), closed + ' does not say why: ' + by[closed].note);
     }
     for (const p of r.providers) assert.ok(p.status_label, 'no Turkish status label for ' + p.key);
   });
@@ -607,15 +622,37 @@ function probeValue(def, current) {
     assert.ok(/denenmedi|doğrulan/i.test(r.warnings.join(' ')), 'the warning does not say it is unverified: ' + r.warnings);
     const list = await api('GET', '/api/settings/okc');
     const d = list.devices.find(x => x.id === r.id);
-    assert.strictEqual(d.provider_status, 'sdk', 'the list does not carry the honest status');
+    /* Hugin moved from 'sdk' to 'beta' when the manufacturer's own PC Link
+       protocol replaced the guessed one - no SDK is needed for it at all. The
+       point of this check is unchanged: the list must carry the real status,
+       and the real status must not be 'ready' until a device has answered. */
+    assert.strictEqual(d.provider_status, 'beta', 'the list does not carry the honest status');
+    assert.notStrictEqual(d.provider_status, 'ready',
+      'no Hugin device has ever answered - it cannot be advertised as working');
     assert.ok(d.provider_note && d.provider_note.length > 20);
   });
 
-  await step('a stub provider cannot be pointed at a real shop', async () => {
-    const r = await api('POST', '/api/settings/okc/devices', {
-      provider: 'hugin', serial_number: 'HUG-TEST-2', device_ip: '192.168.1.61', environment: 'production' });
-    assert.strictEqual(r.status, 400, 'an unfinished driver was allowed into production');
-    assert.ok(/gerçek|tamamlan/i.test(r.error), r.error);
+  await step('a driver no device has answered cannot be pointed at a real shop', async () => {
+    /* Hugin's protocol is the manufacturer's own, which is better founded than
+       Token's guessed framing - and still not proof. Both are refused for the
+       real environment, because a tax document does not care how well we read
+       the specification. */
+    for (const p of ['hugin', 'token']) {
+      const r = await api('POST', '/api/settings/okc/devices', {
+        provider: p, serial_number: 'PRD-' + p, device_ip: '192.168.1.61', environment: 'production' });
+      assert.strictEqual(r.status, 400, p + ': an unverified driver was allowed into production');
+      assert.ok(/gerçek|doğrulan/i.test(r.error), r.error);
+    }
+  });
+
+  await step('a provider closed by decision says so, not "not written yet"', async () => {
+    for (const p of ['worldline', 'ingenico']) {
+      const r = await api('POST', '/api/settings/okc/devices', {
+        provider: p, serial_number: 'CLS-' + p, environment: 'test' });
+      assert.strictEqual(r.status, 400, p + ' was accepted as a device');
+      assert.ok(/kullanılmıyor|karar/i.test(r.error),
+        p + ': the refusal should name the decision, not a missing package: ' + r.error);
+    }
   });
 
   await step('a provider that was never written cannot be added at all', async () => {

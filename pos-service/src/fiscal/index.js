@@ -36,7 +36,8 @@ const yetenek = require('./yetenek');
 const ADAPTERS = {
   ...engelli.blockedAdapters(),
   simulator: SimulatorAdapter,
-  ingenico: brands.IngenicoAdapter,
+  /* ingenico: KASITLI OLARAK YOK. engelli.js'teki BLOCKED kaydi devreye girer;
+     sinif brands.IngenicoAdapter olarak duruyor ama gonderim icin secilemez. */
   hugin: brands.HuginAdapter,
   profilo: brands.ProfiloAdapter,
   token: brands.TokenAdapter,

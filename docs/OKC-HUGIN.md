@@ -133,6 +133,33 @@ Both are fixed (`keepAlive: false`, `maxCachedSessions: 0`, and the check now
 also runs against the socket that actually carried the response). There is a
 test for each, because neither failure was visible from the outside.
 
+## Worldline and Ingenico are closed, by decision
+
+Not missing — decided against, on 21 September 2026, after reading Worldline's
+full GMP3 package (quote, contract, DLL briefing, process and purchase
+documents). The reasons are written into
+`pos-service/src/fiscal/adapters/engelli.js` so that nobody reopens it as if it
+were an errand:
+
+- the hash is taken over the application **and** the DLL and changes with "the
+  smallest development on the code"; when it changes, every device in the field
+  stops. The contract then caps system changes at **two per calendar year**.
+  That cannot coexist with a product that ships weekly.
+- a **monthly fee per device**, at a price Worldline may change unilaterally.
+- meal cards and loyalty are Group 3 — a separate commercial contract.
+- Worldline may terminate on one month's notice, without reason or
+  compensation, and on termination **every connected device's GMP3 licence is
+  disabled remotely**.
+
+**Ingenico falls with it**: in Turkey Ingenico ÖKCs are Worldline-licensed, so
+without that contract there is no way to talk to one. The `IngenicoAdapter`
+class is kept — the decision can be reversed — but it cannot be selected for
+dispatch, and both owners refuse with `CLOSED_BY_DECISION` rather than
+`SDK_NOT_OBTAINED`. The two are different facts and the code says which is
+which.
+
+This leaves **Hugin as the only live route**, which is the one that is built.
+
 ## What is deliberately not built
 
 Cancellation, refund and X/Z reports **exist** in PC Link — the documentation

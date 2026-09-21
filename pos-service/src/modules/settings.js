@@ -1306,14 +1306,19 @@ const PROVIDERS = [
   { key: 'token', label: 'Token / Verifone', status: 'beta',
     note: 'GMP-3 protokolü yazıldı. Cihazın firmware alan adları üreticinin entegrasyon dokümanıyla doğrulanmalı.',
     fields: ['device_ip', 'device_port', 'serial_number'], defaultPort: 7600 },
-  { key: 'ingenico', label: 'Ingenico', status: 'sdk',
-    note: 'Genel GMP-3 istemcisi bağlı; üreticinin entegrasyon dokümanı olmadan alan adları doğrulanmadı.',
-    fields: ['device_ip', 'device_port', 'serial_number'], defaultPort: 7500 },
-  { key: 'hugin', label: 'Hugin', status: 'sdk',
-    note: 'Eski sistemde yalnızca iskeleti vardı. Burada genel GMP-3 istemcisine bağlandı, gerçek cihazda denenmedi.',
-    fields: ['device_ip', 'device_port', 'serial_number'], defaultPort: 7500 },
+  { key: 'ingenico', label: 'Ingenico (Worldline)', status: 'closed',
+    note: 'Türkiye\'de Ingenico ÖKC\'leri Worldline lisanslıdır ve Worldline GMP3 '
+        + 'sözleşmesi kullanılmayacağına karar verildi (21.09.2026). Seçilemez.',
+    fields: [] },
+  { key: 'hugin', label: 'Hugin (PC Link)', status: 'beta',
+    note: 'Üreticinin yayımladığı PC Link protokolüne yazıldı: HTTPS 4443, '
+        + '/v1/documents. SDK/DLL gerekmiyor. Gerçek cihazda denenmedi ve '
+        + 'Hugin entegrasyon sözleşmesi olmadan eşleşme yapılamaz.',
+    fields: ['device_ip', 'device_port', 'serial_number', 'pclink_software_id'],
+    defaultPort: 4443 },
   { key: 'profilo', label: 'Profilo', status: 'sdk',
-    note: 'Hugin firmware\'i ile aynı; aynı doğrulama gerekiyor.',
+    note: 'Hugin firmware\'i olduğu VARSAYILIYORDU; doğrulanmadı. PC Link '
+        + 'konuştuğu iddia edilmiyor, doğrulanmamış GMP-3 yolunda.',
     fields: ['device_ip', 'device_port', 'serial_number'], defaultPort: 7500 },
   { key: 'beko', label: 'Beko', status: 'sdk',
     note: 'Token firmware\'i ile aynı; aynı doğrulama gerekiyor.',
@@ -1324,8 +1329,9 @@ const PROVIDERS = [
   { key: 'paygo', label: 'PayGo', status: 'planned',
     note: 'Henüz yazılmadı. Eski sistemde de yalnızca boş bir sınıftı; seçilemez.',
     fields: [] },
-  { key: 'worldline', label: 'Worldline', status: 'planned',
-    note: 'Henüz yazılmadı. Eski sistemde de yalnızca boş bir sınıftı; seçilemez.',
+  { key: 'worldline', label: 'Worldline', status: 'closed',
+    note: 'GMP3 paketi incelendi ve kullanılmamasına karar verildi (21.09.2026). '
+        + 'Gerekçeler fiscal/adapters/engelli.js içinde yazılı. Seçilemez.',
     fields: [] },
 ];
 
@@ -1334,17 +1340,22 @@ const STATUS_LABEL = {
   beta: 'Deneme (doğrulanmalı)',
   sdk: 'SDK gerekli',
   planned: 'Planlandı',
+  /* Not "missing", but "decided against". A planned adapter opens when somebody
+     writes it; a closed one opens when somebody changes their mind. */
+  closed: 'Kullanılmıyor (karar)',
 };
 
 function providerCatalogue() {
   return PROVIDERS.map(p => ({
     ...p,
     status_label: STATUS_LABEL[p.status],
-    selectable: p.status !== 'planned',
+    selectable: p.status !== 'planned' && p.status !== 'closed',
     // an adapter class actually exists for these; 'planned' ones would fall
     // back to the simulator and silently pretend to work
     implemented: !!fiscal.ADAPTERS[p.key],
-    allows_production: p.status === 'ready' || p.status === 'beta',
+    /* Must match the rule saveDevice enforces, or the screen offers a choice
+       the save then refuses. READY only: implemented is not proven. */
+    allows_production: p.status === 'ready',
   }));
 }
 
@@ -1377,10 +1388,15 @@ function providerByKey(key) { return PROVIDERS.find(p => p.key === String(key ||
  */
 const OWNER_DRIVER_HINT = {
   token:     { driver: 'token',    basis: 'Token firmware - aynı mali sahip' },
-  hugin:     { driver: 'hugin',    basis: 'Hugin firmware - aynı mali sahip' },
-  worldline: { driver: 'ingenico', basis: 'Donanım Ingenico; sürücü Ingenico için yazıldı' },
-  pavo:      { driver: 'ingenico', basis: 'Donanım Ingenico; sürücü Ingenico için yazıldı' },
+  hugin:     { driver: 'hugin',    basis: 'Üreticinin yayımladığı PC Link protokolü' },
   panaroma:  { driver: 'olivetti', basis: 'Olivetti cihazları; sürücü Olivetti için yazıldı' },
+  /*
+   * worldline and pavo used to suggest the `ingenico` driver. Both are gone:
+   * the Ingenico driver is closed by decision, so suggesting it would offer
+   * the cashier a choice the dispatcher will refuse. `usable()` below would
+   * filter it anyway - this is belt and braces, and it keeps the reason
+   * visible next to the table rather than only in the filter.
+   */
 };
 
 async function registryCatalogue() {
@@ -1395,7 +1411,7 @@ async function registryCatalogue() {
    */
   const usable = (key) => {
     const p = providerByKey(key);
-    return p && p.status !== 'planned' ? key : null;
+    return p && p.status !== 'planned' && p.status !== 'closed' ? key : null;
   };
   return rows.map(r => {
     const direct = usable(r.owner_key);
@@ -1462,10 +1478,33 @@ async function saveDevice(clientId, data) {
   if (prov.status === 'planned') {
     throw bad(`${prov.label} entegrasyonu henüz yazılmadı, cihaz eklenemez.`);
   }
+  /*
+   * Closed is a different sentence from unwritten, and the cashier deserves
+   * the real one. "Henüz yazılmadı" invites them to ask when it will be
+   * ready; this one tells them it will not be, and why.
+   */
+  if (prov.status === 'closed') {
+    throw bad(`${prov.label} kullanılmıyor: ${prov.note}`);
+  }
   const env = String(data.environment || 'simulator').toLowerCase();
   if (!['production', 'test', 'simulator'].includes(env)) throw bad('Geçersiz ortam: ' + env);
-  if (env === 'production' && !(prov.status === 'ready' || prov.status === 'beta')) {
-    throw bad(`${prov.label} entegrasyonu tamamlanmadığı için "Gerçek" ortam seçilemez. Test ortamını kullanın.`);
+  /*
+   * "Gerçek" needs READY, not beta.
+   *
+   * This used to accept beta too, which let a driver whose wire format is
+   * still a guess - Token's framing and command names are ours, not the
+   * manufacturer's - be pointed at a shop that issues legal receipts. Hugin
+   * is better founded (the protocol is the vendor's own) and still has never
+   * had a device answer it, which is the same distance from ready where a tax
+   * document is concerned.
+   *
+   * Nothing is lost: a device in TEST can be added, paired and exercised in
+   * full. Moving it to production is the step that waits for proof, and
+   * production_enabled plus the capability profile gate it again after this.
+   */
+  if (env === 'production' && prov.status !== 'ready') {
+    throw bad(`${prov.label} gerçek cihazda doğrulanmadığı için "Gerçek" ortam `
+      + 'seçilemez. Test ortamında çalışın; doğrulandıktan sonra açılır.');
   }
   if (prov.key === 'simulator' && env === 'production') {
     throw bad('Simülatör gerçek ortamda kullanılamaz; hiçbir mali fiş kesmez.');
