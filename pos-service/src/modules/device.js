@@ -415,7 +415,10 @@ async function createPairCode(clientId, userId, forUserId = null) {
  * a chat group. A private scheme is read by the NOKTApp Garson app and by
  * nothing else, which is the whole audience this symbol has.
  *
- *   noktapp://pair?b=http://192.168.1.40:7327&t=<32 hex>&a=<other addresses>
+ *   noktapp://pair?b=192.168.1.40:7327&t=<32 hex>&a=<other addresses>&c=<tenant>
+ *
+ * The addresses carry no scheme - see the note inside pairPayload for why,
+ * and PairQr.parse in the Garson app, which puts http:// back on.
  *
  * `b` saves the phone the discovery sweep entirely: it knows the till's
  * address before it has sent a single packet. `a` carries the other addresses

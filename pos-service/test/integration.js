@@ -160,6 +160,14 @@ const post = (url, body, headers = {}) => fetch(url, {
   });
 
   await step("a phone off the restaurant's wifi reaches the till through the relay", async () => {
+    /*
+     * run-all.sh switches relay_enabled off for the whole run, because a
+     * background long-poll from every suite sends the sandbox panel's workers
+     * to sleep and times out whatever runs next - see the note there. This is
+     * the suite the relay belongs to, so it turns it on for the two checks
+     * that need it and off again straight afterwards.
+     */
+    await db.setSetting('relay_enabled', '1');
     relay.start();
     await new Promise(r => setTimeout(r, 500));
     const token = await auth.issueToken({ cid: 19, uid: 0, role: 'admin', name: 'Erik', kind: 'mobile' }, '1h');
@@ -170,6 +178,7 @@ const post = (url, body, headers = {}) => fetch(url, {
     assert.strictEqual(r.body.ok, true, r.body.error);
     assert.ok(Array.isArray(r.body.tables), 'relay did not return the till payload');
     relay.stop();
+    await db.setSetting('relay_enabled', '0');
   });
 
   await step('the relay refuses paths outside the phone API', async () => {

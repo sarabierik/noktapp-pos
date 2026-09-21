@@ -20,7 +20,7 @@
 #   SHARED_DB   the shared guest registry        nokpos_shared
 #
 # integration and the server half of loyalty need the panel running. Locally
-# that is four `php -S` workers behind test/panel-proxy.js, because PHP's dev
+# that is eight `php -S` workers behind test/panel-proxy.js, because PHP's dev
 # server is single threaded - see test/README.md.
 set -u
 
@@ -49,6 +49,21 @@ for m in "$ROOT"/../database/migrations/*.sql; do
   [ -e "$m" ] && $M "$DB_NAME" < "$m"
 done
 sed 's/:client_id/19/g' "$ROOT/../database/03_seed.sql" | $M "$DB_NAME" || exit 1
+
+# THE RELAY IS OFF FOR THE RUN, AND integration.js TURNS IT ON FOR ITS OWN CHECKS.
+#
+# Every service bootstrap calls relay.start(), which long-polls the panel and
+# holds one PHP worker for up to twenty seconds at a time. A suite that exits
+# mid-poll leaves that worker asleep, because PHP only notices a dropped client
+# when the script writes output and a long-poll writes nothing until it has an
+# answer. Enough quick suites in a row and every worker on the sandbox panel is
+# asleep; the next suite's first call then queues and times out, which is what
+# made zincir fail six checks about branch codes - none of them about branches.
+#
+# So no suite holds a panel worker by accident. The relay's own behaviour is
+# still proved, in the one suite that is about it: integration.js switches this
+# back on around its two relay checks and off again afterwards.
+$M "$DB_NAME" -e "UPDATE np_settings SET v='0' WHERE k='relay_enabled'" || exit 1
 
 # the panel's device list is per-licence and seat-limited; leftovers from an
 # earlier run make the next login fail with "your licence is for N computers"
@@ -99,10 +114,13 @@ if node "$ROOT/test/karekod.js" 2>&1 | tail -1; then :; else FAILED=1; fi
 #
 # roller and yetki come AFTER zincir for a smaller version of the same reason.
 # Between them they make some fifteen hundred requests in three minutes, and
-# the test panel is four single-threaded `php -S` workers; zincir's branch bind
-# waits on one of them and times out after thirty seconds if they are still
-# draining. Nothing is wrong with either suite - the sandbox panel is simply
-# not a cPanel server, and the suites that test the panel contract go first.
+# the test panel is a handful of single-threaded `php -S` workers; zincir's
+# branch bind waits on one of them and times out after thirty seconds if they
+# are still draining. Nothing is wrong with either suite - the sandbox panel is
+# simply not a cPanel server, and the suites that test the panel contract go
+# first. (The bigger half of that problem - abandoned relay long-polls holding
+# a worker asleep for twenty seconds - is dealt with above, by switching the
+# relay off for the run.)
 # The four suites that need the PHP panel. On CI there is no panel, so they are
 # skipped by name rather than left to fail with a timeout that says nothing.
 PANEL_SUITES=" integration loyalty zincir geri "

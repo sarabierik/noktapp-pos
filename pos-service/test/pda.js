@@ -170,6 +170,35 @@ async function fixture() {
     assert.strictEqual(String(row.bill_label), 'B', 'etiket saklanmadı');
   });
 
+  /*
+   * Masa etiketi ve onun ipuclari.
+   *
+   * setEtiket has a test; the chip list the phone draws above the box did not
+   * have one, and the endpoint had never been called by anything in the suite.
+   * It matters because the whole point of the chips is that two waiters do not
+   * invent "Pencere" and "pencere kenari" for the same table.
+   */
+  await step('masaya etiket verilir ve aynı etiket çipi telefona geri gelir', async () => {
+    const set = await api('POST', `/api/mobile/tables/${T.a}/etiket`, { etiket: 'Teras 3', kalici: 1 });
+    assert.strictEqual(set.status, 200, 'etiket verilemedi: ' + JSON.stringify(set));
+
+    const r = await api('GET', '/api/mobile/etiketler');
+    assert.strictEqual(r.status, 200, 'çip listesi gelmedi: ' + JSON.stringify(r));
+    assert.ok(Array.isArray(r.etiketler), 'etiketler dizi değil: ' + JSON.stringify(r));
+    const seen = r.etiketler.map(e => (typeof e === 'string' ? e : e.etiket));
+    assert.ok(seen.includes('Teras 3'),
+      'az önce yazılan etiket çip olarak dönmedi: ' + JSON.stringify(seen));
+  });
+
+  await step('çırak da çipleri okuyabilir - etiket yazabildiği için', async () => {
+    /* The chips sit behind order.create, the same key as writing a label. The
+       trainee has that key, so they get the list; whether somebody WITHOUT the
+       key is refused is proved for every gated endpoint at once by the sweep
+       in test/yetki.js, which is where that question belongs. */
+    const r = await api('GET', '/api/mobile/etiketler', undefined, LIMITED);
+    assert.strictEqual(r.status, 200, 'çırak çipleri okuyamadı: ' + JSON.stringify(r));
+  });
+
   /* ============================================ istasyona gönder / print job */
 
   await step('el terminalinden mutfağa gönderilir', async () => {

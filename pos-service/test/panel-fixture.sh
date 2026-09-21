@@ -110,13 +110,27 @@ $M -N -e "SELECT CONCAT('  registry tables: ', GROUP_CONCAT(table_name)) FROM in
 
 # The panel served the way test/README.md describes: PHP's dev server is single
 # threaded and the relay holds a request open, so one worker would deadlock
-# against itself. Four workers behind the round-robin proxy on 8090.
+# against itself. Workers behind the round-robin proxy on 8090.
+#
+# EIGHT, not four. relay_poll.php sleeps for up to twenty seconds waiting for a
+# message and never notices that the caller has gone - PHP only spots a dropped
+# client when the script next writes output, and a long-poll writes nothing
+# until it has an answer. So every suite that exits while its relay poll is
+# open leaves a worker asleep for the rest of those twenty seconds. Three quick
+# suites in a row (okc, okc-kayit and hugin finish inside ten seconds between
+# them) was enough to leave all four asleep, and the next suite's first panel
+# call then queued behind them and hit its own thirty-second timeout. Measured:
+# four abandoned polls blocked the proxy for 17.6 seconds.
+#
+# The suites now switch the relay off unless they are testing it (see
+# run-all.sh), which removes the cause. Eight workers is the belt to that
+# braces - it costs nothing and no ordering accident can starve the panel again.
 export NP_DB_HOST=127.0.0.1 NP_DB_PORT="$DB_PORT" NP_DB_NAME="$PANEL_DB" NP_DB_USER="$DB_USER" NP_DB_PASS="$DB_PASS"
 export NP_PASS_HOST=127.0.0.1 NP_PASS_PORT="$DB_PORT" NP_PASS_NAME="$SHARED_DB" NP_PASS_USER="$DB_USER" NP_PASS_PASS="$DB_PASS"
 pkill -f "php -S 127.0.0.1:80" 2>/dev/null
 pkill -f "panel-proxy.js" 2>/dev/null
 sleep 1
-for p in 8088 8089 8091 8092; do
+for p in 8088 8089 8091 8092 8093 8094 8095 8096; do
   ( cd "$ROOT/panel" && setsid php -S 127.0.0.1:$p -t . </dev/null >/tmp/php-$p.log 2>&1 & )
 done
 sleep 1

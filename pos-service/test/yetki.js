@@ -48,6 +48,12 @@ const OPEN_ON_PURPOSE = {
   'GET /api/auth/features': 'which areas this installation uses; a waiter needs it to draw a sidebar',
   'GET /api/auth/devices': 'the paired-phone list; revoking one is gated, reading it is not',
 
+  /* --- pairing, which by definition happens before there is a token ----- */
+  'POST /api/mobile/pair': 'a phone that is pairing HAS no token yet - that is the exercise. '
+    + 'It is above mobileAuth on purpose, takes a QR token only (never the six-digit code, '
+    + 'see src/eslestirme.js), and the token is single-use and expires. The secret in the '
+    + 'symbol is the check.',
+
   /* --- the handheld's own delta ----------------------------------------- */
   'GET /api/mobile/pull': 'the phone\'s own copy of the menu, the floor and the open bills - '
     + 'the same rows its screens already draw, and it is reached with a device token that only '

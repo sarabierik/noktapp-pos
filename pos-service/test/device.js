@@ -468,6 +468,15 @@ async function pairPhone(deviceId, name, platform = 'android', version = '2.1.0'
   });
 
   await step('a relay that has not polled recently is not reported as connected', async () => {
+    /*
+     * The whole question here is what the connection screen says about the
+     * relay, and it says nothing at all when the feature is switched off -
+     * correctly, since there is no connection to report. run-all.sh turns
+     * relay_enabled off for the run (a background long-poll from every suite
+     * puts the sandbox panel's workers to sleep; see the note there), so this
+     * check turns it back on for its own three questions.
+     */
+    await db.setSetting('relay_enabled', '1');
     await db.exec('UPDATE np_relay_state SET last_poll_at=DATE_SUB(NOW(), INTERVAL 10 MINUTE), consecutive_errors=0 WHERE id=1');
     let r = await api('GET', '/api/device/connection');
     assert.strictEqual(r.relay.connected, false, 'a ten minute old poll is not a live connection');
@@ -483,6 +492,7 @@ async function pairPhone(deviceId, name, platform = 'android', version = '2.1.0'
     await db.exec('UPDATE np_relay_state SET last_poll_at=NOW(), consecutive_errors=0 WHERE id=1');
     r = await api('GET', '/api/device/connection');
     assert.strictEqual(r.relay.connected, true);
+    await db.setSetting('relay_enabled', '0');
   });
 
   /* ========================= 6. İŞLEM GÜNLÜĞÜ ========================== */

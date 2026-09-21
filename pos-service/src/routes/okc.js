@@ -57,6 +57,27 @@ r.get('/registry/match', wrap(async (req, res) => {
   }
 }));
 
+/*
+ * :id IS A DATABASE KEY, AND A PATH SEGMENT IS NOT.
+ *
+ * Every route below takes a device id, and each of them used to do
+ * Number(req.params.id) and hand the result to a query. `/devices/abc/pair`
+ * therefore reached MariaDB as NaN, which it reads as an identifier, and the
+ * answer that came back to the caller was
+ *
+ *     500  Unknown column 'NaN' in 'WHERE'
+ *
+ * That is wrong three times over: a 500 says the till broke when the caller
+ * simply asked for a device that cannot exist; the shape of our query leaks to
+ * anybody who can sign in; and it reaches a cashier's screen as a red box of
+ * English SQL. One guard on the parameter rather than seven repairs in seven
+ * handlers, so the routes not written yet inherit it too.
+ */
+r.param('id', (req, res, next, raw) => {
+  if (!/^[1-9]\d{0,17}$/.test(String(raw))) return fail(res, 'Cihaz bulunamadı', 404);
+  next();
+});
+
 /* ---------------------------------------------------------------- devices  */
 
 /** Commissioned devices, each with its three evidence dimensions spelled out. */

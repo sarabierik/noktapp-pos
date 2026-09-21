@@ -2,7 +2,7 @@
 // behaves like the multi-process PHP on cPanel (where the relay long-poll does
 // not block every other request).
 const http = require('http');
-const backends = [8088, 8089, 8091, 8092];
+const backends = [8088, 8089, 8091, 8092, 8093, 8094, 8095, 8096];
 let i = 0;
 http.createServer((req, res) => {
   const port = backends[i++ % backends.length];

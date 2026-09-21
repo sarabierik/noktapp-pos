@@ -175,8 +175,14 @@ r.post('/tables/:id/etiket', can('order.create'), wrap(async (req, res) => {
     { etiket: b.etiket, kalici: b.kalici }, req.auth.uid));
 }));
 
-/** The labels already in use, offered as chips so nobody types them twice. */
-r.get('/etiketler', wrap(async (req, res) =>
+/*
+ * The labels already in use, offered as chips so nobody types them twice.
+ *
+ * Behind the same key as the POST above it: the list exists only to fill that
+ * form, so a waiter who may not label a table has no reason to read what other
+ * tables have been called.
+ */
+r.get('/etiketler', can('order.create'), wrap(async (req, res) =>
   ok(res, { etiketler: await require('../modules/floor').etiketGecmisi(req.clientId) })));
 
 r.get('/orders/:id', wrap(async (req, res) => {

@@ -113,7 +113,21 @@ async function fixture() {
     const p = await mint(WAITER_ID);
     const u = new URL(p.qr.payload.replace('noktapp://', 'http://'));
     const b = u.searchParams.get('b');
-    assert.ok(/^https?:\/\/[\d.]+:\d+$/.test(b || ''), 'adres yok ya da bozuk: ' + b);
+    /*
+     * host:port, WITHOUT the scheme - and that is the current contract, not a
+     * defect. device.pairPayload strips http:// deliberately: the scheme is 7
+     * characters that carry no information, and on a PC with three network
+     * cards keeping them pushed the symbol from 41x41 modules to 53x53, which
+     * is the difference between a code a waiter can scan off a glossy monitor
+     * at arm's length and one they cannot. The phone puts it back - see
+     * PairQr.parse in mobile/lib/services/api.dart, which prefixes http:// to
+     * anything arriving without one.
+     *
+     * This assertion used to demand the scheme and was simply never updated
+     * when the payload was shortened.
+     */
+    assert.ok(/^[\d.]+:\d+$/.test(b || ''), 'adres yok ya da bozuk: ' + b);
+    assert.ok(!/^https?:/.test(b), 'şema yeniden payload\'a girmiş, karekod büyür: ' + b);
     assert.ok(/^[0-9a-f]{32}$/.test(u.searchParams.get('t') || ''), 'jeton biçimi yanlış');
   });
 
@@ -122,11 +136,13 @@ async function fixture() {
        nowhere; the phone should be handed the real card first */
     const ranked = device.pairPayload({ qr_token: 'a'.repeat(32),
       addresses: ['http://192.168.56.1:7451', 'http://192.168.1.40:7451'] });
-    assert.ok(ranked.includes(encodeURIComponent('http://192.168.56.1:7451')),
-      'sanal adres hiç taşınmamış');
-    const first = decodeURIComponent(new URL(ranked.replace('noktapp://', 'http://')).searchParams.get('b'));
-    assert.strictEqual(first, 'http://192.168.56.1:7451',
+    /* Addresses ride as bare host:port and unencoded - see the step above. */
+    assert.ok(ranked.includes('192.168.56.1:7451'), 'sanal adres hiç taşınmamış');
+    const first = new URL(ranked.replace('noktapp://', 'http://')).searchParams.get('b');
+    assert.strictEqual(first, '192.168.56.1:7451',
       'pairPayload sırayı kendi değiştirmemeli - sıralama lan.addresses işi');
+    /* and the real card is still in the symbol, behind it, in `a` */
+    assert.ok(ranked.includes('192.168.1.40:7451'), 'gerçek kart payloaddan düşmüş');
   });
 
   await step('ekranı yenileyince aynı kod geri gelir', async () => {
@@ -154,6 +170,49 @@ async function fixture() {
     assert.ok(r.token && r.jwt, 'jeton verilmedi');
     assert.ok(r.perms.includes('order.create'), 'yetkiler gelmedi');
     assert.ok(!r.perms.includes('payment.take'), 'olmayan yetki verildi');
+  });
+
+  /*
+   * THE DOOR THE PHONE ACTUALLY USES.
+   *
+   * Everything above knocks on /api/auth/pair, which is the till's own door on
+   * the restaurant's Wi-Fi. The Garson app pairing from outside the building
+   * comes through the cloud relay, and the relay carries ONE prefix: /api/
+   * mobile. That endpoint had no test at all - the whole "pair from a
+   * photograph of the screen, from home, on your own data" path rested on code
+   * nothing had ever called.
+   *
+   * It is also the door with the extra rule: qrOnly. The six-digit code is
+   * fine on the shop's own network and must never be accepted through a door
+   * the internet can knock on, because six digits is a million guesses and the
+   * relay is reachable from anywhere.
+   */
+  await step('telefon aynı karekodla relay kapısından (/api/mobile/pair) da bağlanır', async () => {
+    const p = await mint(WAITER_ID);
+    const r = await api('POST', '/api/mobile/pair', { qr_token: await tokenOf(p.code), ...phone() }, null);
+    assert.strictEqual(r.status, 200, 'relay kapısından bağlanamadı: ' + JSON.stringify(r));
+    assert.strictEqual(r.user.id, WAITER_ID, 'başka birinin adına bağlandı');
+    assert.ok(r.token && r.jwt, 'jeton verilmedi');
+  });
+
+  await step('altı haneli kod, şifresi doğru olsa bile relay kapısından geçmez', async () => {
+    /* Six digits plus the account's own password is accepted on the shop's own
+       network - see "altı hane hâlâ kullanıcı adı ve şifre ister" below. The
+       point here is that the SAME complete, valid attempt is refused through
+       the door the internet can reach, because six digits is a million
+       guesses and the relay answers from anywhere. */
+    const creds = { username: 'esl_garson', password: 'Sifre1234' };
+
+    const good = await mint(WAITER_ID);
+    const lan = await api('POST', '/api/auth/pair', { code: good.code, ...creds, ...phone() }, null);
+    assert.strictEqual(lan.status, 200,
+      'kod+şifre LAN kapısından da geçmedi - sınama bir şey kanıtlamıyor: ' + JSON.stringify(lan));
+
+    const other = await mint(WAITER_ID);
+    const relay = await api('POST', '/api/mobile/pair', { code: other.code, ...creds, ...phone() }, null);
+    assert.ok(relay.status >= 400,
+      'altı hane internete açık kapıdan geçti - bir milyon deneme: ' + JSON.stringify(relay));
+    assert.ok(typeof relay.error === 'string' && relay.error.length, 'boş ret: ' + JSON.stringify(relay));
   });
 
   await step('telefon şifresi olmayan garson da karekodla bağlanır', async () => {

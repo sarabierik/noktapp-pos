@@ -24,6 +24,7 @@ const engelli = require('../src/fiscal/adapters/engelli');
 const tutar = require('../src/fiscal/tutar');
 const niyet = require('../src/fiscal/niyet');
 const fiscal = require('../src/fiscal');
+const auth = require('../src/auth');
 const { bootstrap } = require('../src/index');
 
 const CID = 23;
@@ -253,6 +254,52 @@ async function refuses(fn, code, what) {
   await step('the simulator is always allowed, and is never production', async () => {
     const sim = { id: 999, provider: 'simulator', environment: 'simulator', production_enabled: 0 };
     await fiscal.assertDispatchAllowed(CID, sim, { workflow: 'SALE', tenderKinds: ['CASH'] });
+  });
+
+  /* ----------------------------------------------- over HTTP, as the screen does */
+  /*
+   * Everything above calls the modules directly, which is the right level for
+   * the rules. But the Cihaz ekle screen does not call kayit.matchSerial - it
+   * types a serial into a box and asks the SERVER what it would match, and
+   * that endpoint had never been called by anything. These two steps close
+   * that, and the second one covers the answer that actually reaches a cashier
+   * when they mistype.
+   */
+  const BASE = 'http://127.0.0.1:' + process.env.NOKTAPP_PORT;
+  const TOKEN = await auth.issueToken({ cid: CID, uid: 0, role: 'admin', name: 'Sahip', kind: 'pos' });
+  const api = async (method, path) => {
+    const res = await fetch(BASE + path, { method, headers: { Authorization: 'Bearer ' + TOKEN } });
+    return { status: res.status, ...(await res.json().catch(() => ({}))) };
+  };
+
+  await step('the screen can ask what a serial would match, without commissioning it', async () => {
+    const [known] = await db.query(
+      "SELECT prefix FROM fiscal_registry_devices WHERE category='retail' AND prefix IS NOT NULL AND prefix<>'' LIMIT 1");
+    const serial = String(known.prefix) + '1234567';
+    const r = await api('GET', '/api/okc/registry/match?serial=' + encodeURIComponent(serial));
+    assert.strictEqual(r.status, 200, JSON.stringify(r));
+    assert.strictEqual(r.prefix, String(known.prefix), 'onek okunmadi: ' + JSON.stringify(r));
+    assert.ok(r.match && r.match.brand_model, 'kayit donmedi: ' + JSON.stringify(r));
+    /* read-only: nothing was commissioned by asking */
+    const [{ n }] = await db.query('SELECT COUNT(*) n FROM fiscal_devices WHERE client_id=? AND serial_number=?',
+      [CID, serial]);
+    assert.strictEqual(Number(n), 0, 'sorgu cihaz olusturmus');
+  });
+
+  await step('a mistyped serial is refused in Turkish, not with a 500', async () => {
+    const r = await api('GET', '/api/okc/registry/match?serial=' + encodeURIComponent('ZZ9'));
+    assert.ok(r.status >= 400 && r.status < 500, 'beklenen ret gelmedi: ' + r.status);
+    assert.ok(typeof r.error === 'string' && r.error.length > 0, 'bos hata mesaji: ' + JSON.stringify(r));
+    assert.ok(!/SQL|column|syntax/i.test(r.error), 'veritabani mesaji disariya sizmis: ' + r.error);
+  });
+
+  await step('a device id that is not a number is a clean 404, not a database error', async () => {
+    /* /devices/abc/capabilities used to reach MariaDB as NaN and answer
+       500 "Unknown column 'NaN' in 'WHERE'" - see the r.param guard in
+       src/routes/okc.js */
+    const r = await api('GET', '/api/okc/devices/abc/capabilities');
+    assert.strictEqual(r.status, 404, 'beklenen 404 gelmedi: ' + JSON.stringify(r));
+    assert.ok(!/NaN|column/i.test(String(r.error || '')), 'veritabani mesaji sizmis: ' + r.error);
   });
 
   /* ------------------------------------------------------------ report  */
