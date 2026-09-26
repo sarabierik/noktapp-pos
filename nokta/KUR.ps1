@@ -57,6 +57,15 @@ if ($LASTEXITCODE -ne 0) {
   exit 1
 }
 
+Step 6 "Sinamalar calistiriliyor"
+# Ucuz ve erken: uygulamanin acilip acilmadigini ve kart/kod/fiyat
+# hesaplarini kontrol eder. Bir misafirin yanlis SAYI gorecegi yerler bunlar.
+flutter test
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "`n  Sinama basarisiz. Yukaridaki satirlari oldugu gibi gonderin.`n" -ForegroundColor Yellow
+  exit 1
+}
+
 Write-Host "`nHazir." -ForegroundColor Green
 Write-Host "  Telefonu USB ile bagla, sonra:  flutter run"
 Write-Host "  Play Store paketi icin:         .\YAYIN.ps1"

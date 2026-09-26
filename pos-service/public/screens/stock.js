@@ -191,7 +191,7 @@ Screens.add({
     modal(`
       <div class="modal__head"><h3>${esc(r.item.name)} — hareketler</h3><div class="spacer"></div>
         <span class="badge badge--closed mono">${tl(r.level ? r.level.qty : 0)} ${esc(inv_unit(r.item.unit))}</span>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         ${r.by_location.length > 1 ? `<div class="row" style="gap:8px;margin-bottom:12px;flex-wrap:wrap">
           ${r.by_location.map(l => `<span class="chip">${esc(l.location_name)}
@@ -255,7 +255,7 @@ Screens.add({
       <div class="modal__head"><h3>Fatura ${esc(d.document_no || '#' + d.id)}</h3><div class="spacer"></div>
         <span class="badge ${d.status === 'approved' ? 'badge--closed' : 'badge--gray'}">
           ${d.status === 'approved' ? 'Onaylı' : 'İptal'}</span>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="row" style="gap:18px;margin-bottom:12px">
           <div><div class="muted" style="font-size:12.5px">Tedarikçi</div><b>${esc(d.supplier_name || '—')}</b></div>
@@ -277,7 +277,7 @@ Screens.add({
       </div>
       <div class="modal__foot">
         ${d.status === 'approved' ? '<button class="btn btn--danger" id="skdCancel">Faturayı iptal et</button>' : ''}
-        <button class="btn btn--ghost" onclick="closeModal()">Kapat</button></div>`, { wide: true });
+        <button class="btn btn--ghost" data-close="1">Kapat</button></div>`, { wide: true });
     if ($('#skdCancel')) {
       $('#skdCancel').onclick = async () => {
         if (!await confirmBox('Fatura iptali',
@@ -311,7 +311,7 @@ Screens.add({
       const total = lines.reduce((a, l) => a + (Number(l.quantity) || 0) * (Number(l.unit_price) || 0), 0);
       modal(`
         <div class="modal__head"><h3>${doc.id ? 'Alış faturası (taslak)' : 'Yeni alış faturası'}</h3>
-          <div class="spacer"></div><button class="close-x" onclick="closeModal()">✕</button></div>
+          <div class="spacer"></div><button class="close-x" data-close="1">✕</button></div>
         <div class="modal__body">
           <div class="split-3">
             <div class="field"><label>Tedarikçi</label><select class="input" id="sdSup">
@@ -354,7 +354,7 @@ Screens.add({
             Taslak kaydetmek stoğu değiştirmez. Stok ancak <b>onayladığınızda</b> girer.</div>
         </div>
         <div class="modal__foot">
-          <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+          <button class="btn btn--ghost" data-close="1">Vazgeç</button>
           <button class="btn btn--dark" id="sdSave">Taslak kaydet</button>
           <button class="btn btn--primary" id="sdApprove">Kaydet ve onayla</button>
         </div>`, { wide: true });
@@ -454,7 +454,7 @@ Screens.add({
       }, 0);
       modal(`
         <div class="modal__head"><h3>${esc(productName)} — reçete</h3><div class="spacer"></div>
-          <button class="close-x" onclick="closeModal()">✕</button></div>
+          <button class="close-x" data-close="1">✕</button></div>
         <div class="modal__body">
           <p class="muted" style="margin-top:0">Bir porsiyon için gereken miktarları girin.
             Miktar malzemenin kendi biriminde yazılır — kg'lık una <b>0,3</b> yazarsanız 300 gramdır.</p>
@@ -482,7 +482,7 @@ Screens.add({
           <p class="muted" style="margin-bottom:0">Bu tutar bilgi amaçlıdır; ürün kartındaki maliyeti değiştirmez.</p>
         </div>
         <div class="modal__foot">
-          <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+          <button class="btn btn--ghost" data-close="1">Vazgeç</button>
           <button class="btn btn--primary" id="srOk">Kaydet</button></div>`, { wide: true });
 
       $$('#modal [data-rf]').forEach(el => el.onchange = () => {
@@ -554,7 +554,7 @@ Screens.add({
     modal(`
       <div class="modal__head"><h3>Sayım — ${esc(String(c.count_date).slice(0, 10))}</h3><div class="spacer"></div>
         <span class="badge ${open ? 'badge--open' : 'badge--closed'}">${open ? 'Açık' : 'Kapandı'}</span>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         ${open ? `<div class="alert alert--info">Rafta ne varsa <b>Sayılan</b> sütununa yazın.
           Fark otomatik hesaplanır. Sayımı kapatana kadar stok değişmez.</div>` : ''}
@@ -577,7 +577,7 @@ Screens.add({
             <b style="font-size:20px" class="mono ${Number(c.variance_value) < 0 ? 'is-loss' : ''}">${tl(c.variance_value)} ₺</b></div></div>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Kapat</button>
+        <button class="btn btn--ghost" data-close="1">Kapat</button>
         ${open ? `<button class="btn btn--dark" id="scSave">Kaydet</button>
                   <button class="btn btn--primary" id="scOk">Sayımı kapat ve stoğa işle</button>` : ''}</div>`,
       { wide: true });
@@ -644,7 +644,7 @@ Screens.add({
     const reasons = (await api('GET', '/api/inventory/waste/reasons')).reasons;
     modal(`
       <div class="modal__head"><h3>Zayi girişi</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="field"><label>Malzeme</label><select class="input" id="swItem">
           ${items.map(i => `<option value="${i.id}">${esc(i.name)} (${esc(inv_unit(i.unit))})</option>`).join('')}
@@ -661,7 +661,7 @@ Screens.add({
         <div class="alert alert--warn" style="margin-bottom:0">
           Zayi stoktan düşer ve geri alınamaz. Yanlış girdiyseniz sayımla düzeltebilirsiniz.</div>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--danger" id="swOk">Zayi olarak düş</button></div>`);
     $('#swOk').onclick = async () => {
       try {
@@ -717,7 +717,7 @@ Screens.add({
     const items = (await api('GET', '/api/inventory/items')).items;
     modal(`
       <div class="modal__head"><h3>Depo transferi</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="field"><label>Malzeme</label><select class="input" id="stItem">
           ${items.map(i => `<option value="${i.id}">${esc(i.name)} (${esc(inv_unit(i.unit))})</option>`).join('')}
@@ -734,7 +734,7 @@ Screens.add({
         <p class="muted" style="margin-bottom:0">Transfer toplam stoğu değiştirmez, sadece nerede
           durduğunu değiştirir.</p>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="stOk">Transfer et</button></div>`);
     $('#stOk').onclick = async () => {
       try {
@@ -804,7 +804,7 @@ Screens.add({
     const cats = (await api('GET', '/api/inventory/categories')).categories;
     modal(`
       <div class="modal__head"><h3>${item.id ? 'Malzemeyi düzenle' : 'Yeni malzeme'}</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="field"><label>Malzeme adı</label>
           <input class="input" id="siName" value="${esc(item.name || '')}" placeholder="Un, Kıyma, Kola Kutu…"></div>
@@ -824,7 +824,7 @@ Screens.add({
         <label class="row" style="gap:9px"><input type="checkbox" id="siActive" ${item.is_active === 0 ? '' : 'checked'}>
           <span>Aktif</span></label>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="siOk">Kaydet</button></div>`);
     $('#siOk').onclick = async () => {
       try {
@@ -841,7 +841,7 @@ Screens.add({
   stockSupplierForm(s) {
     modal(`
       <div class="modal__head"><h3>${s.id ? 'Tedarikçiyi düzenle' : 'Yeni tedarikçi'}</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="field"><label>Tedarikçi adı</label><input class="input" id="spName" value="${esc(s.name || '')}"></div>
         <div class="split-2">
@@ -854,7 +854,7 @@ Screens.add({
         <label class="row" style="gap:9px"><input type="checkbox" id="spActive" ${s.is_active === 0 ? '' : 'checked'}>
           <span>Aktif</span></label>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="spOk">Kaydet</button></div>`);
     $('#spOk').onclick = async () => {
       try {

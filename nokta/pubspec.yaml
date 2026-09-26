@@ -21,5 +21,12 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/
+  # ASSET KLASORU YOK, VE OLMAMALI.
+  #
+  # Burada bir `assets: - assets/` satiri vardi. Klasor bos oldugu icin git
+  # onu hicbir zaman takip etmedi, yani temiz bir klonda (Android Studio'da ya
+  # da CI'da) o klasor hic yok - ve Flutter bunu tek bir Dart satiri derlemeden
+  # once "unable to find directory entry in pubspec.yaml: assets/" diye
+  # reddediyor. Uygulama zaten hicbir asset okumuyor: ikonlar Android res/
+  # icinde, N isareti ekranda ciziliyor. Gerceginden bir asset gerekirse once
+  # klasoru dosyayla birlikte ekleyin, sonra bu satiri geri getirin.

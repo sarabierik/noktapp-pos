@@ -458,7 +458,7 @@ Screens.add({
           <div class="modal__body"><div class="alert alert--error">${esc(out.message)}</div>
             <p class="muted">Sık görülen sebepler: yazıcı kapalı, ağ kablosu takılı değil, IP adresi
               değişmiş ya da başka bir program yazıcıyı meşgul ediyor.</p></div>
-          <div class="modal__foot"><button class="btn btn--primary" onclick="closeModal()">Tamam</button></div>`);
+          <div class="modal__foot"><button class="btn btn--primary" data-close="1">Tamam</button></div>`);
       } catch (e) { err(e); }
       finally { b.disabled = false; b.textContent = 'Test fişi'; }
     });
@@ -521,7 +521,7 @@ Screens.add({
         <p class="muted" style="font-size:12.5px">Kasa yazıcısını işaretlerseniz fişin karakter genişliği
           bu yazıcının kağıdına göre ayarlanır.</p>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="fpOk">Kaydet</button></div>`);
 
     const relabel = () => {
@@ -801,7 +801,7 @@ Screens.add({
         <p class="muted" style="font-size:12.5px;margin-bottom:0">İstasyonu olmayan bir kategorinin
           siparişi varsayılan istasyona düşer. Adı değiştirmek açık adisyonları etkilemez.</p>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="sfOk">Kaydet</button></div>`);
 
     /* A new station gets its queue name typed for it from the visible one -
@@ -843,7 +843,7 @@ Screens.add({
           </label>`).join('') || '<p class="muted">Hiç kategori yok.</p>'}
         </div>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="scOk">Kaydet</button></div>`);
 
     $$('.fis-cats [data-cid]').forEach(i => i.onchange = () =>

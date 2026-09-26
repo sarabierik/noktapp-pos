@@ -222,7 +222,7 @@ Screens.add({
   prAccept(x) {
     modal(`
       <div class="modal__head"><h3>${esc(x.name)} — fiyatı güncelle</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="split-3" style="margin-bottom:14px">
           <div class="stat"><div class="stat__label">Şu anki fiyat</div>
@@ -250,7 +250,7 @@ Screens.add({
         <div class="pl-line pl-line--muted"><span>Gerekçe</span><span>${esc(x.reason)}</span></div>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="fyOk">Fiyatı uygula</button></div>`, { wide: true });
 
     const recalc = () => {
@@ -287,7 +287,7 @@ Screens.add({
           <input class="input" id="fyNote" placeholder="Menü basıldı, sezon sonuna kadar sabit…"></div>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--danger" id="fyNo">Reddet</button></div>`);
     $('#fyNo').onclick = async () => {
       try {
@@ -662,7 +662,7 @@ Screens.add({
     modal(`
       <div class="modal__head"><h3>${esc(p.name)}</h3>
         ${p.is_active ? '' : '<span class="badge badge--gray">pasif</span>'}
-        <div class="spacer"></div><button class="close-x" onclick="closeModal()">✕</button></div>
+        <div class="spacer"></div><button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="split-4" style="margin-bottom:14px">
           <div class="stat"><div class="stat__label">Satış fiyatı</div>
@@ -769,7 +769,7 @@ Screens.add({
     const iso = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
     modal(`
       <div class="modal__head"><h3>Yeni maliyet</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="split-2">
           <div class="field"><label>Maliyet (₺)</label>
@@ -784,7 +784,7 @@ Screens.add({
           geçmiş bir tarih girerseniz bugünkü maliyet değişmez.</p>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="ucOk">Kaydet</button></div>`);
     $('#ucOk').onclick = async () => {
       try {
@@ -811,7 +811,7 @@ Screens.add({
           kopyalanmaz — o geçmiş ilk ürüne aittir.</p>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="udOk">Kopyala</button></div>`);
     $('#udOk').onclick = async () => {
       try {
@@ -835,7 +835,7 @@ Screens.add({
     const t = await api('GET', '/api/pricing/targets');
     modal(`
       <div class="modal__head"><h3>Kategoriler</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <table class="tbl"><thead><tr><th>Kategori</th><th class="right">Ürün</th>
           <th class="right">Hedef marj</th><th></th></tr></thead><tbody>

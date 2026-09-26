@@ -355,7 +355,15 @@ class HuginPcLinkAdapter extends FiscalAdapter {
               { deviceCode: err.code || null, deviceTitle: err.title || null,
                 httpStatus: res.statusCode, peerCert: req.peerCert || null }));
           }
+          /*
+           * httpStatus travels with every success, not just failures: the
+           * refund endpoint answers 206 when the device decides the
+           * transaction was still voidable and voids it instead. That is a
+           * different financial event with a different receipt, and the only
+           * thing that distinguishes it is the status code.
+           */
           done(null, { data: json.data || {}, metadata: json.metadata || {},
+                       httpStatus: res.statusCode,
                        peerCert: req.peerCert || null });
         });
       });
@@ -434,12 +442,57 @@ class HuginPcLinkAdapter extends FiscalAdapter {
    * fallback to cash. Sending CASH for a card payment would put the wrong
    * tender on a legal receipt and leave the day-end short.
    */
+  /**
+   * Our tender name -> PC Link's.
+   *
+   * The first list here was written from the PC Link table and a guess at what
+   * the till would send, and it missed the till's own vocabulary: the app's
+   * canonical methods are modules/payments.js METHODS - 'kredi_karti',
+   * 'yemek_karti' - and the table only had 'kredi' and 'yemek'. So a real
+   * cash sale printed and the very next card sale was refused by our own
+   * adapter before it ever reached the device.
+   *
+   * The till's OWN names come first and are exact; the looser synonyms stay
+   * underneath for anything else that reaches this layer. test/hugin.js walks
+   * payments.METHODS and asserts every one of them either maps or is named
+   * here as deliberately not a device tender - so adding a tender to the till
+   * can no longer silently leave a hole in the fiscal path.
+   */
   static paymentType(method) {
     const m = String(method || '').toLowerCase();
-    if (['nakit', 'cash'].includes(m)) return 'CASH';
+
+    /*
+     * The till's canonical tenders. All six of them have a PC Link
+     * counterpart - the reference's payment table has WIRE, OPEN_ACCOUNT and
+     * NO_CHARGE, which an earlier note in this file wrongly said did not
+     * exist. Mapping them here does NOT by itself send them to the device:
+     * whether ikram and acik hesap belong on a fiscal receipt is a tax
+     * decision the owner takes, and the till still decides what to dispatch.
+     * This layer's job is to know the vocabulary, not to set the policy.
+     */
+    if (m === 'nakit') return 'CASH';
+    if (m === 'kredi_karti') return 'EFT_POS';
+    if (m === 'yemek_karti') return 'VOUCHER';
+    if (m === 'havale') return 'WIRE';
+    if (m === 'acik_hesap') return 'OPEN_ACCOUNT';
+    if (m === 'ikram') return 'NO_CHARGE';
+
+    /* the rest of the documented table, for callers other than the till */
+    if (m === 'voucher_pos') return 'VOUCHER_POS';
+    if (m === 'puan' || m === 'loyalty_points') return 'LOYALTY_POINTS';
+    if (m === 'hediye_karti' || m === 'gift_card') return 'GIFT_CARD';
+    if (m === 'sanal_pos' || m === 'vpos') return 'VPOS';
+    if (m === 'mobil' || m === 'mobile') return 'MOBILE';
+    if (m === 'e_para' || m === 'e-money') return 'E-MONEY';
+    if (m === 'bagis' || m === 'charity') return 'CHARITY';
+    if (m === 'ulasim_karti' || m === 'transport_card') return 'TRANSPORT_CARD';
+
+    /* synonyms, for anything arriving from elsewhere */
+    if (['cash'].includes(m)) return 'CASH';
     if (['kart', 'kredi', 'card', 'credit', 'eft_pos', 'eftpos'].includes(m)) return 'EFT_POS';
     if (['cek', 'check', 'cheque'].includes(m)) return 'CHECK';
     if (['yemek', 'voucher', 'ticket', 'multinet', 'sodexo', 'setcard'].includes(m)) return 'VOUCHER';
+
     throw fail(`HUGIN: "${method}" odeme tipi PC Link tablosunda yok. `
       + 'Desteklenenler: CASH, EFT_POS, CHECK, VOUCHER, VOUCHER_POS.',
       'PAYMENT_TYPE_UNSUPPORTED', 400);
@@ -487,17 +540,44 @@ class HuginPcLinkAdapter extends FiscalAdapter {
    * Returns the shape the fiscal module already understands, so nothing above
    * this adapter changes.
    */
-  async finishSale(providerSessionId, sale) {
+  /**
+   * The whole PUT body, built without touching the device.
+   *
+   * Split out of finishSale so the orchestrator can build it BEFORE opening a
+   * document. Every refusal in here - a price of the wrong type, an empty
+   * name, an unknown tender - is one that used to happen with a document
+   * already open on the OKC and no documented way to close it.
+   */
+  buildSalePayload(sale) {
     const body = {
       items: (sale.items || []).map(i => this.buildItem(i)),
       payments: [{
         type: HuginPcLinkAdapter.paymentType(sale.payment && sale.payment.method),
         amount: amountString(sale.payment.amountMinor, 'payment.amount'),
       }],
+      /*
+       * ASKED FOR ON EVERY SALE, because a refund six days from now cannot be
+       * made without it.
+       *
+       * "Iade isleminde gereken bankId ve bankReferenceNo alanlarinin, orjinal
+       * islem esnasinda alinip kayit edilebilmesi icin ... detailedResponse =
+       * true gonderilmeli ve gelen cevaptaki alanlar kayit edilmelidir."
+       *
+       * There is no way to look these up afterwards. A card sale taken without
+       * them is a card sale that can never be refunded through PC Link - and
+       * nobody finds out until a guest comes back with a complaint. The flag
+       * costs nothing on a cash sale and is not worth making conditional.
+       */
+      detailedResponse: true,
     };
     if (!body.items.length) {
       throw fail('HUGIN: bos sepet gonderilemez.', 'SALE_EMPTY', 400);
     }
+    return body;
+  }
+
+  async finishSale(providerSessionId, sale) {
+    const body = this.buildSalePayload(sale);
     const r = await this.request('PUT', `/documents/${encodeURIComponent(providerSessionId)}`,
       body, { timeoutMs: 180000 });
     const d = r.data || {};
@@ -525,6 +605,19 @@ class HuginPcLinkAdapter extends FiscalAdapter {
         cardBrand: d.cardBrand || null,
         cardMasked: d.maskedPan || null,
         bank: d.bankName || null,
+
+        /*
+         * The two fields a refund needs later. They travel in the detailed
+         * response and nowhere else; losing them here loses the ability to
+         * refund this sale for good. Read from several spellings because the
+         * reference shows them at both levels and a null is better than a
+         * wrong guess at which.
+         */
+        bankId: d.bankId || (d.additionalData && d.additionalData.bankId) || null,
+        bankReferenceNo: d.bankReferenceNo
+          || (d.additionalData && d.additionalData.bankReferenceNo) || null,
+        posTransactionId: d.transactionId
+          || (d.additionalData && d.additionalData.transactionId) || null,
       },
       raw: d,
     };
@@ -536,32 +629,148 @@ class HuginPcLinkAdapter extends FiscalAdapter {
    * "waiting_device" for ever would hang a sale, so this says plainly that the
    * answer arrives with finishSale().
    */
+  /**
+   * PC Link is request/response, not poll: the PUT in finishSale carries the
+   * basket and the payment and its own answer is the result. The orchestrator
+   * reads this to know it must CALL finishSale rather than start a poll loop -
+   * which is exactly what it failed to do the first time a real S1 was asked
+   * for a receipt: the document opened, nothing sent the basket, and the till
+   * waited three minutes for an answer to a question it never asked.
+   */
+  get saleShape() { return 'request_response'; }
+
   async pollSale() {
     throw fail('HUGIN: PC Link yoklama (poll) kullanmaz - satis sonucu PUT yanitinda doner.',
       'POLL_NOT_APPLICABLE', 400);
   }
 
   /* ------------------------------------------------------------------ */
-  /* not documented on the pages we have                                 */
+  /* the rest of the API reference                                       */
   /* ------------------------------------------------------------------ */
 
-  /**
-   * Cancel, refund and reports exist in PC Link - "Banka İşlemleri: İptal ve
-   * iade ödemeleri, gün sonu raporları", "Raporlar: X ve Z raporu" - but their
-   * endpoints and payloads are in the Postman API reference, which needs an
-   * integration account. Guessing a path here is how a till fires a Z report
-   * at a device in the middle of service.
+  /*
+   * These three used to throw ENDPOINT_UNDOCUMENTED, and that claim was wrong.
+   * It meant "not on the pages I read" - the developer portal's landing page -
+   * when the full reference was one link away at
+   * hugin-pc-link.docs.buildwithfern.com. Hugin support said as much when
+   * asked: "dokumanda istekler bulunmaktadir". Read 24.09.2026.
    */
-  undocumented(what) {
-    return fail(
-      `HUGIN: ${what} icin uc nokta henuz elimizde degil. PC Link API Referansi `
-      + '(Postman) entegrasyon hesabiyla alinip bu adaptore eklenmeli.',
-      'ENDPOINT_UNDOCUMENTED', 501, { deviceEffects: 'none' });
+
+  /**
+   * Cancel the OPEN document on the device.
+   *
+   * This is the endpoint whose absence made a failed sale strand the OKC:
+   * startSale opens a document, and without this there was no way to close
+   * one, so the device answered every later sale with ERR_INVALID_STATE until
+   * somebody restarted it.
+   *
+   * Documented limits, carried here rather than discovered at the counter:
+   * only an ACTIVE document can be cancelled, and a document holding more
+   * than one card payment cannot be (ERR_INVALID_CANCEL) - the outstanding
+   * payments have to be completed instead.
+   */
+  async cancelSale(providerSessionId) {
+    if (!providerSessionId) {
+      throw fail('HUGIN: iptal edilecek belge numarasi yok.', 'PCLINK_NO_DOCUMENT_ID', 400);
+    }
+    const r = await this.request(
+      'POST', `/documents/${encodeURIComponent(providerSessionId)}/cancel`, null,
+      { timeoutMs: 30000 });
+    const d = r.data || {};
+    return {
+      state: 'cancelled',
+      documentStatus: d.documentStatus || 'CANCELLED',
+      receiptNo: d.receiptNo || null,
+      raw: d,
+    };
   }
 
-  async cancelSale() { throw this.undocumented('satis iptali'); }
-  async refund()     { throw this.undocumented('iade'); }
-  async report()     { throw this.undocumented('X/Z raporu'); }
+  /**
+   * X or Z. Z CLOSES THE FISCAL DAY and advances the counters, which is not
+   * something to fire by accident, so the kind is validated rather than
+   * interpolated.
+   *
+   * `detail` returns the report as data; `print` puts it on the device's
+   * paper and answers 204. Both are the same data model.
+   */
+  async report(kind = 'X', { print = true } = {}) {
+    const k = String(kind || '').toUpperCase();
+    if (k !== 'X' && k !== 'Z') {
+      throw fail(`HUGIN: "${kind}" rapor turu yok. X veya Z olmali.`,
+        'REPORT_KIND_UNSUPPORTED', 400);
+    }
+    const r = await this.request('POST', `/reports/${k}/${print ? 'print' : 'detail'}`, null,
+      { timeoutMs: 120000 });
+    return { kind: k, printed: !!print, data: r.data || {}, raw: r.data || {} };
+  }
+
+  /**
+   * Void a card transaction that has NOT yet been financialised - i.e. before
+   * the day-end. Only the device that took the original payment can do it.
+   *
+   *   POST /v1/pos/transactions/{transactionId}/void
+   */
+  async voidTransaction(posTransactionId) {
+    if (!posTransactionId) {
+      throw fail('HUGIN: iptal edilecek banka islem numarasi yok. Satista '
+        + 'detailedResponse ile donen transactionId kaydedilmeli.',
+        'PCLINK_NO_TRANSACTION_ID', 400);
+    }
+    const r = await this.request(
+      'POST', `/pos/transactions/${encodeURIComponent(posTransactionId)}/void`, null,
+      { timeoutMs: 60000 });
+    const d = r.data || {};
+    return { state: 'voided', transactionId: d.transactionId || posTransactionId,
+      amount: d.amount || null, raw: d };
+  }
+
+  /**
+   * Refund a card payment that HAS been financialised (after the day-end).
+   *
+   *   POST /v1/pos/refunds   { amount, bankId, bankReferenceNo }
+   *
+   * Two things the reference is explicit about and that decide the shape of
+   * this method:
+   *
+   *  - bankId and bankReferenceNo cannot be looked up later. They come back in
+   *    the original sale's detailed response and must have been stored then.
+   *    Without them there is no refund, which is why buildSalePayload asks for
+   *    detailedResponse on every sale.
+   *
+   *  - If the transaction turns out NOT to be financialised yet, the device
+   *    redirects to a void and answers 206. That is a different financial
+   *    event with a different receipt, so it is reported as such rather than
+   *    flattened into "refunded".
+   */
+  async refund(refund = {}) {
+    const amountMinor = refund.amountMinor !== undefined && refund.amountMinor !== null
+      ? refund.amountMinor : refund.amount;
+    const bankId = refund.bankId;
+    const bankReferenceNo = refund.bankReferenceNo;
+    if (!bankId || !bankReferenceNo) {
+      throw fail(
+        'HUGIN: iade icin bankId ve bankReferenceNo gerekli. Bunlar orijinal '
+        + 'satisin detayli yanitinda gelir ve sonradan sorgulanamaz; bu satis '
+        + 'onlar kaydedilmeden alinmissa PC Link uzerinden iade edilemez.',
+        'REFUND_REFERENCE_MISSING', 400, { deviceEffects: 'none' });
+    }
+    const r = await this.request('POST', '/pos/refunds', {
+      amount: amountString(amountMinor, 'refund.amount'),
+      bankId: Number(bankId),
+      bankReferenceNo: String(bankReferenceNo),
+    }, { timeoutMs: 120000 });
+    const d = r.data || {};
+    /* 206: the device decided this was still voidable and voided it instead */
+    const redirected = Number(r.httpStatus) === 206;
+    return {
+      state: redirected ? 'voided' : 'refunded',
+      redirectedToVoid: redirected,
+      transactionId: d.transactionId || null,
+      approvalCode: d.authorizationCode || null,
+      amount: d.amount || null,
+      raw: d,
+    };
+  }
 }
 
 module.exports = { HuginPcLinkAdapter, amountString, primaryMac };

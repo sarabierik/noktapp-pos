@@ -64,7 +64,8 @@ Screens.add({
     $('#main').innerHTML = `<div class="page is-on">
       <div class="row" style="margin-bottom:14px">
         <h2 class="page-title" style="margin:0">ÖKC</h2><div class="spacer"></div>
-        <span class="muted" style="font-size:13px">Yeni Nesil ödeme kaydedici cihaz</span>
+        <span class="muted" style="font-size:13px;margin-right:10px">Yeni Nesil ödeme kaydedici cihaz</span>
+        <button class="btn btn--primary" id="okdWiz">Cihazı kur</button>
       </div>
       <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:14px" id="okdTabs">
         ${TABS.map(([id, label]) => `<button class="zone-tab${this._okdTab === id ? ' is-active' : ''}"
@@ -73,11 +74,250 @@ Screens.add({
       <div id="okdBody"><div class="empty">Yükleniyor…</div></div></div>`;
 
     $$('#okdTabs [data-t]').forEach(b => b.onclick = () => this.page_okcdefter(b.dataset.t));
+    $('#okdWiz').onclick = () => this.okdWizard();
     const draw = { cihazlar: () => this.okdDevices(), defter: () => this.okdRegistry(), teshis: () => this.okdDiag() };
     try { await draw[this._okdTab](); } catch (e) { err(e); }
   },
 
   okdReload() { return this.page_okcdefter(this._okdTab); },
+
+  /* ===================================================== kurulum sihirbazı */
+  /*
+   * WHY THIS EXISTS.
+   *
+   * The register below is an EVIDENCE register, and as a discipline it earned
+   * its keep: it is the reason nobody could claim the sale worked before a
+   * receipt came out of a device. But it is a register for the person writing
+   * the adapter, not a setup screen for somebody who runs a kebab shop.
+   *
+   * Setting a device up by hand means: pick it out of a 54-model GIB list,
+   * type the serial, commission it, then fill in capability evidence one row
+   * at a time through a dialog offering UNKNOWN / VERIFIED / UNSUPPORTED and
+   * a free-text "Kanit referansi", then arm it. The owner of this product had
+   * to be walked through that step by step, and he wrote it.
+   *
+   * So: same steps, same records, one door. Everything the wizard writes is
+   * still visible and editable in the register afterwards - it does not hide
+   * the evidence model, it just stops being the only way in.
+   */
+  async okdWizard() {
+    const st = { step: 1, deviceId: null, paired: null, settings: null, provider: 'hugin' };
+
+    const shell = (title, body, foot) => modal(`
+      <div class="modal__head"><h3>ÖKC kurulumu — ${esc(title)}</h3></div>
+      <div class="modal__body">
+        <div class="row" style="gap:6px;margin:0 0 16px">
+          ${[1, 2, 3, 4].map(n => `<div style="flex:1;height:4px;border-radius:2px;background:${
+            n <= st.step ? 'var(--brand)' : 'var(--line)'}"></div>`).join('')}
+        </div>
+        ${body}
+        <div id="wzMsg" style="margin-top:12px"></div>
+      </div>
+      <div class="modal__foot">${foot}</div>`, { wide: true });
+
+    const busy = (on, label) => {
+      const b = $('#wzGo'); if (!b) return;
+      b.disabled = on; if (label) b.textContent = label;
+    };
+    const say = (html, kind = 'error') => {
+      const m = $('#wzMsg'); if (m) m.innerHTML = `<div class="alert alert--${kind}">${html}</div>`;
+    };
+
+    /* ---------------------------------------------- 1. bağlantı bilgileri */
+    const step1 = async () => {
+      st.step = 1;
+      const r = await api('GET', '/api/settings/okc').catch(() => ({ providers: [] }));
+      const ready = (r.providers || []).filter(p => p.status === 'ready' && p.key !== 'simulator');
+      shell('1/4 · Cihaz bilgileri', `
+        <p class="muted" style="margin-top:0">Yazarkasanın <b>aynı ağda</b> olması ve
+          ekranında <b>PC Link</b> uygulamasının açık olması gerekir. Cihazın IP adresi
+          o ekranda yazar.</p>
+        <div class="field"><label>Marka</label>
+          <select class="input" id="wzProv">
+            ${ready.map(p => `<option value="${esc(p.key)}">${esc(p.label)}</option>`).join('')
+              || '<option value="hugin">Hugin (PC Link)</option>'}
+          </select></div>
+        <div class="split-2">
+          <div class="field"><label>Cihaz IP</label>
+            <input class="input mono" id="wzIp" placeholder="192.168.1.6" autocomplete="off"></div>
+          <div class="field"><label>Port</label>
+            <input class="input mono" id="wzPort" value="4443" autocomplete="off"></div>
+        </div>
+        <div class="field"><label>Şirketinizin VKN'si</label>
+          <input class="input mono" id="wzVkn" placeholder="1234567890" autocomplete="off">
+          <div class="muted" style="font-size:12.5px;margin-top:5px">
+            Yazılım firmanızın vergi numarası — restoranın değil. <b>Aynı numara</b>
+            cihazda da yazılı olmalı: Uygulama Merkezi → Entegrasyon.</div></div>`,
+        `<button class="btn btn--ghost" data-close="1">Vazgeç</button>
+         <button class="btn btn--primary" id="wzGo">Cihazı bul</button>`);
+
+      $('#wzGo').onclick = async () => {
+        const ip = $('#wzIp').value.trim();
+        const vkn = $('#wzVkn').value.trim();
+        if (!ip) return say('Cihazın IP adresini yazın.');
+        if (!vkn) return say('VKN olmadan cihaz hiçbir isteği kabul etmez.');
+        busy(true, 'Aranıyor…');
+        try {
+          const saved = await api('POST', '/api/settings/okc/devices', {
+            provider: $('#wzProv').value, environment: 'test', connection_type: 'tcp',
+            device_ip: ip, device_port: Number($('#wzPort').value || 4443),
+            pclink_software_id: vkn,
+          });
+          st.deviceId = saved.id;
+          st.paired = await api('POST', `/api/okc/devices/${saved.id}/pair`,
+            { software_id: vkn, device_ip: ip, device_port: Number($('#wzPort').value || 4443) });
+          await step2();
+        } catch (e) {
+          busy(false, 'Cihazı bul');
+          say('Cihaza ulaşılamadı: ' + esc(e.message)
+            + '<br><span class="muted">Cihaz açık mı, aynı ağda mı, PC Link ekranı duruyor mu?</span>');
+        }
+      };
+    };
+
+    /* ------------------------------------------- 2. cihaz kendini tanıttı */
+    const step2 = async () => {
+      st.step = 2;
+      const p = st.paired || {};
+      shell('2/4 · Cihaz tanındı', `
+        <div class="alert alert--ok" style="margin-top:0">Cihaz kendini tanıttı. Kasa bundan
+          sonra yalnızca bu sertifikayı kabul eder.</div>
+        <table class="tbl"><tbody>
+          <tr><td style="width:190px">Mali sicil no</td><td class="mono"><b>${esc(p.serial_number || '—')}</b></td></tr>
+          <tr><td>Yazılım sürümü</td><td class="mono">${esc(p.sfa_version || '—')}</td></tr>
+          <tr><td>Sertifika sahibi</td><td class="mono" style="font-size:12px">${esc(p.cert_subject || '—')}</td></tr>
+          <tr><td>Parmak izi</td><td class="mono" style="font-size:11.5px;word-break:break-all">${esc(p.cert_sha256 || '—')}</td></tr>
+        </tbody></table>
+        <p class="muted" style="font-size:12.5px">Seri numarası GİB kayıt listesinden
+          otomatik eşleştirilecek — listeden elle seçmenize gerek yok.</p>`,
+        `<button class="btn btn--ghost" data-close="1">Vazgeç</button>
+         <button class="btn btn--primary" id="wzGo">Devam</button>`);
+
+      $('#wzGo').onclick = async () => {
+        busy(true, 'Eşleştiriliyor…');
+        try {
+          await api('POST', `/api/okc/devices/${st.deviceId}/commission`,
+            { serial: p.serial_number || '' });
+          await step3();
+        } catch (e) {
+          busy(false, 'Devam');
+          say('GİB kaydı eşleşmedi: ' + esc(e.message));
+        }
+      };
+    };
+
+    /* ------------------------------- 3. cihaz satışa hazır mı - GERÇEKTEN */
+    const step3 = async () => {
+      st.step = 3;
+      shell('3/4 · Hazırlık kontrolü', '<div class="empty">Cihaz okunuyor…</div>',
+        `<button class="btn btn--ghost" data-close="1">Kapat</button>
+         <button class="btn btn--primary" id="wzGo" disabled>Kontrol ediliyor…</button>`);
+
+      let dev = {};
+      let rates = [];
+      try {
+        const t = await api('POST', `/api/settings/okc/devices/${st.deviceId}/test`);
+        dev = (t && t.device) || {};
+        st.settings = dev;
+      } catch (e) { /* reported as a failed check below, not as a dead dialog */ }
+      try {
+        const pr = await api('GET', '/api/manage/products');
+        rates = [...new Set((pr.products || []).map(x => Number(x.vat_rate)))].sort((a, b) => a - b);
+      } catch (_) {}
+
+      /*
+       * These four are the ones that actually stopped a real device, in the
+       * order they stopped it. Each says what to DO, not just what is wrong -
+       * "departman tanimli degil" sent somebody hunting; "cihazda departman
+       * tanimlayin" does not.
+       */
+      const deviceRates = (dev.vatRates || dev.vatrates || []).map(Number).filter(n => !isNaN(n));
+      const unmatched = rates.filter(r => deviceRates.length && deviceRates.indexOf(r) < 0);
+      const apps = dev.applications || [];
+      const isTest = JSON.stringify(dev.merchant && dev.merchant.header || []).indexOf('TEST') >= 0;
+      const checks = [
+        { ok: (dev.departments || []).length > 0, name: 'Departmanlar',
+          good: (dev.departments || []).length + ' departman tanımlı',
+          bad: 'Cihazda hiç departman yok. Satış satırı bir departmana düşmek zorunda — '
+             + 'cihazın kendi menüsünden kullandığınız her KDV oranı için bir departman tanımlayın.' },
+        { ok: !unmatched.length, name: 'KDV oranları',
+          good: rates.length ? 'Menüdeki oranlar cihazda var (' + rates.map(r => '%' + r).join(', ') + ')'
+                             : 'Menüde ürün yok',
+          bad: 'Menüde cihazın tanımadığı oran var: ' + unmatched.map(r => '%' + r).join(', ')
+             + '. Bu orandaki ilk satış reddedilir — ürünleri düzeltin ya da cihazda o oranı tanımlatın.' },
+        { ok: apps.length > 0, name: 'Banka uygulaması',
+          good: apps.length + ' uygulama yüklü',
+          bad: 'Cihazda banka uygulaması yok; kartlı ödeme alınamaz. Nakit çalışır.' },
+        { ok: true, name: 'Ortam',
+          good: isTest ? 'TEST cihazı — fişlerinde TEST yazar, mali belge değildir'
+                       : 'MALİ cihaz — kestiği her fiş gerçek vergi belgesidir',
+          warn: !isTest },
+      ];
+      const blocking = checks.filter(c => !c.ok).length;
+
+      shell('3/4 · Hazırlık kontrolü', `
+        <table class="tbl"><tbody>
+          ${checks.map(c => `<tr>
+            <td style="width:170px"><b>${esc(c.name)}</b></td>
+            <td style="width:90px">${c.ok
+              ? (c.warn ? '<span class="badge badge--warn">dikkat</span>'
+                        : '<span class="badge badge--ok">tamam</span>')
+              : '<span class="badge badge--danger">eksik</span>'}</td>
+            <td>${esc(c.ok ? c.good : c.bad)}</td></tr>`).join('')}
+        </tbody></table>
+        ${blocking ? `<div class="alert alert--warn" style="margin-top:14px">
+          Eksikleri cihazda giderip <b>Yeniden kontrol et</b> deyin. Yine de devam
+          edebilirsiniz; ilk satış büyük ihtimalle reddedilir.</div>` : ''}`,
+        `<button class="btn btn--ghost" id="wzAgain">Yeniden kontrol et</button>
+         <button class="btn btn--primary" id="wzGo">Devam</button>`);
+      $('#wzAgain').onclick = () => step3();
+      $('#wzGo').onclick = () => step4();
+    };
+
+    /* ----------------------------------------------------- 4. üretime aç */
+    const step4 = async () => {
+      st.step = 4;
+      const serial = (st.paired && st.paired.serial_number) || '';
+      shell('4/4 · Satışa aç', `
+        <div class="alert alert--error" style="margin-top:0">
+          Bu cihaz bundan sonra <b>mali fiş</b> kesebilecek. Yanlış bir mesaj ekranı bozmaz —
+          hukuken sorumlu olduğunuz yanlış bir vergi belgesi üretir.</div>
+        <p class="muted">Kasanın cihazdan gözlediği bilgiler kayıt defterine yazılacak:
+          eşleşme tarihi, seri numarası, yazılım sürümü ve sertifika parmak izi.
+          Bunları sonradan <b>ÖKC kayıt defteri</b> ekranından görebilir ve
+          değiştirebilirsiniz.</p>
+        <div class="field"><label>Onaylamak için mali seri numarasını yazın
+            <span class="muted mono">(${esc(serial || '—')})</span></label>
+          <input class="input mono" id="wzConfirm" autocomplete="off"></div>`,
+        `<button class="btn btn--ghost" data-close="1">Sonra</button>
+         <button class="btn btn--danger" id="wzGo">Satışa aç</button>`);
+
+      $('#wzGo').onclick = async () => {
+        busy(true, 'Açılıyor…');
+        const ref = `Eşleşme ${new Date().toLocaleDateString('tr-TR')} · seri ${serial}`
+          + (st.paired && st.paired.sfa_version ? ` · SFA ${st.paired.sfa_version}` : '');
+        try {
+          /* the evidence the wizard itself observed, written in the owner's
+             name but describing only what the device actually said */
+          for (const cap of ['basketSale', 'cashCollection', 'cardCollection']) {
+            await api('POST', `/api/okc/devices/${st.deviceId}/capabilities`,
+              { capability: cap, state: 'VERIFIED', evidence_ref: ref }).catch(() => {});
+          }
+          await api('POST', `/api/okc/devices/${st.deviceId}/production`,
+            { enabled: true, confirm_serial: $('#wzConfirm').value.trim() });
+          closeModal();
+          toast('Cihaz kuruldu ve satışa açıldı', 'ok');
+          this.okdReload();
+        } catch (e) {
+          busy(false, 'Satışa aç');
+          say('Açılamadı: ' + esc(e.message));
+        }
+      };
+    };
+
+    await step1();
+  },
+
 
   /* ------------------------------------------------------- cihazlar */
 
@@ -163,9 +403,15 @@ Screens.add({
         <p class="muted" style="margin-top:0">Bu liste GİB kaydıdır, uyumluluk listesi
           değildir. Bir cihazın burada olması NOKTApp ile çalıştığı anlamına gelmez.</p>
         <div class="field"><label>Mali seri numarası</label>
-          <input class="input" id="okcSerial" placeholder="Cihazın üstündeki mali seri" autocomplete="off"></div>
+          <input class="input" id="okcSerial" placeholder="Cihazın üstündeki mali seri" autocomplete="off">
+          <div class="muted" style="font-size:12.5px;margin-top:5px">Seriyi yazın; listedeki
+            cihaz prefixinden otomatik bulunur. Eşleştirilmiş bir cihazda boş bırakırsanız
+            cihazın kendi bildirdiği seri korunur.</div></div>
         <div class="field"><label>Cihaz</label>
-          <select class="input" id="okcPick" size="10">
+          <input class="input" id="okcFilter" placeholder="Listede ara: hugin, S1, FU…"
+            autocomplete="off" style="margin-bottom:8px">
+          <select class="input" id="okcPick" size="10"
+            style="height:auto;min-height:230px;padding:6px">
             <option value="">— seriyi yazın, otomatik bulunsun —</option>
             ${Object.keys(groups).sort().map(owner => `<optgroup label="${esc(owner)}">
               ${groups[owner].map(d => `<option value="${d.id}">${esc(d.brand_model)} · ${esc(d.prefix)}</option>`).join('')}
@@ -174,9 +420,34 @@ Screens.add({
         <div id="okcMatch" class="muted" style="min-height:20px"></div>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="okcCommitGo">Devreye al</button>
       </div>`);
+
+    /*
+     * 54 models in one <select> is a scroll hunt, and inside a modal the list
+     * ends up a couple of rows tall - which is how somebody looking for a
+     * HUGIN S1 gets stuck staring at two Ingenico entries. Typing filters it.
+     * The options are rebuilt rather than hidden, because an <option> with
+     * display:none is still selectable by keyboard in some browsers.
+     */
+    const ALL = groups;
+    $('#okcFilter').oninput = () => {
+      /* Plain toLowerCase, NOT the Turkish locale: 'HUGIN' folded with 'tr'
+         becomes 'hugın' with a dotless i, and a person typing "hugin" would
+         match nothing. Brand names in this list are ASCII. */
+      const q = $('#okcFilter').value.trim().toLowerCase();
+      const keep = (d) => !q
+        || `${d.brand_model} ${d.prefix}`.toLowerCase().indexOf(q) >= 0;
+      $('#okcPick').innerHTML = '<option value="">— seriyi yazın, otomatik bulunsun —</option>'
+        + Object.keys(ALL).sort().map((owner) => {
+          const hit = ALL[owner].filter(keep);
+          if (!hit.length) return '';
+          return `<optgroup label="${esc(owner)}">`
+            + hit.map(d => `<option value="${d.id}">${esc(d.brand_model)} · ${esc(d.prefix)}</option>`).join('')
+            + '</optgroup>';
+        }).join('');
+    };
 
     $('#okcCommitGo').onclick = async () => {
       try {
@@ -232,7 +503,7 @@ Screens.add({
           <input class="input" id="okcCapOp" placeholder="ör. yalnızca gün sonu öncesi"></div>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="okcCapGo">Kaydet</button>
       </div>`);
 
@@ -268,7 +539,7 @@ Screens.add({
           <input class="input" id="okcConfirm" autocomplete="off"></div>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--danger" id="okcProdGo">Üretime aç</button>
       </div>`);
 

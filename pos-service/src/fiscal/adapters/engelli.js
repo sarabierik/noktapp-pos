@@ -59,6 +59,44 @@ const BLOCKED = {
                 reason: 'Ticari karar: GMP3 sozlesmesi kullanilmayacak (21.09.2026)' },
   ingenico:   { name: 'Ingenico (Worldline lisansli)', decided: true,
                 reason: 'Ticari karar: Worldline GMP3 sozlesmesi kullanilmayacak (21.09.2026)' },
+  /*
+   * TOKEN VE BEKO - TAHMIN YANLIS CIKTI, 23.09.2026.
+   *
+   * brands.js'teki TokenAdapter/BekoAdapter, TCP 7600 uzerinden GMP-3 JSON
+   * konusan bir istemciydi ve alan adlari ('operation', 'body', 'refNo')
+   * tarafimdan uyduruldu. developer.tokeninc.com okundu; UCUNUN DE YANLIS
+   * oldugu ortaya cikti:
+   *
+   *   - TCP YOK. X30TR bir Type-C USB cihazidir ve libusbK surucusuyle
+   *     libusb uzerinden konusulur; 300TR ise cradle uzerinde FTDI kopruyle
+   *     RS232 seri porttur. Hicbir yerde bir TCP portu yok, 7600 de yok.
+   *   - GMP-3 JSON YOK. Tel protokolu TLV'dir (2 bayt Type, 4 bayt Length),
+   *     paketler SIKISTIRILMIS ve SIFRELENMIS, anahtar bir el sikismadan
+   *     sonra uretiliyor. Tag numaralari, checksum, sifre ve sikistirma
+   *     algoritmalari YAYINLANMAMIS.
+   *   - Dolayisiyla bu protokol disaridan yazilamaz. Uretici kutuphanesi
+   *     (IntegrationHub.dll + libusb-1.0.dll, libcrypto-3.dll, zlib1.dll)
+   *     zorunludur; .NET, Delphi, C++ ve Java ornekleri var, Node yok.
+   *
+   * Alternatif yol var ve bizim mimarimize daha yakin: Token X Connect
+   * Cloud, HTTPS REST (POST /v1/baskets, JWT Bearer, webhook ile sonuc).
+   * DLL gerektirmiyor. Ama base URL ile client-id/client-secret yalnizca
+   * sozlesme sonrasi veriliyor.
+   *
+   * Her iki yol da ayni kapiya cikiyor: okc.entegrasyon@tokeninc.com,
+   * bilgi formu, tanisma toplantisi, SOZLESME, sonra test cihazi. Mali bir
+   * OKC ile gelistirme yapilmasi acikca yasak.
+   *
+   * Adaptor sinifi brands.js'te duruyor ama gonderim icin secilemez:
+   * calismayacagini bildigimiz bir kodun bir cihaza ulasmayi denemesi,
+   * hicbir sey denememesinden daha kotudur.
+   */
+  token:      { name: 'Token (Token Finansal Teknolojiler)', decided: true,
+                reason: 'Protokol dogrulandi: USB/RS232 + uretici DLL gerekiyor, '
+                      + 'TCP 7600 tahmini yanlisti. Sozlesme ve test cihazi alinmadi (23.09.2026)' },
+  beko:       { name: 'Beko (Token firmware: 300TR / X30TR)', decided: true,
+                reason: 'Token ile ayni: USB/RS232 + uretici DLL gerekiyor, '
+                      + 'TCP 7600 tahmini yanlisti. Sozlesme ve test cihazi alinmadi (23.09.2026)' },
   panaroma:   { name: 'Panaroma / Olivetti',             reason: 'SDK ve sözleşme alınmadı' },
   enpos:      { name: 'EnPOS',                           reason: 'SDK ve sözleşme alınmadı' },
   ncr:        { name: 'NCR',                             reason: 'SDK ve sözleşme alınmadı' },
@@ -101,21 +139,86 @@ const IN_PROGRESS = ['token', 'hugin', 'profilo'];
  * contract is still not allowed to trade.
  */
 const PROTOCOL_SOURCE = {
+  /*
+   * 24.09.2026: bu kayit bir donum noktasi. deviceProven artik tek bir
+   * evet/hayir degil, cunku cihaz bize YARISINI kanitladi.
+   *
+   * KANITLANDI (gercek donanim, HUGIN S1, mali sicil FU00032768):
+   *   TLS el sikismasi, sertifika okuma ve sabitleme, X-SoftwareId
+   *   basliginin kabulu, GET /v1/settings. Cihaz kendini tanitti:
+   *   yazilim surumu 6.6.25-sp, sertifika sahibi
+   *   serialNumber=FU00032768, CN=FU00032768, O=HUGIN, C=TR.
+   *   Dokumandan okudugumuz alan adlari bu yolda DOGRU cikti.
+   *
+   * 24.09.2026 AKSAMI: NAKIT MALI FIS BASILDI. Satis govdesinin alan
+   * adlari artik varsayim degil - gercek cihaz kabul etti ve fisi yazdirdi.
+   *
+   * KANITLANMADI:
+   *   Kart yolu, yemek karti, iptal ve X/Z raporu. Kart bu cihazda
+   *   kanitlanamaz: yuklu tek banka uygulamasi T.C. Merkez Bankasi test
+   *   uygulamasi.
+   *
+   * Bu ayrimi korumak onemli: "cihaz cevap verdi" ile "cihaz dogru fis
+   * bastirdi" ayni cumle degil ve ikincisi vergi belgesi uretir.
+   */
   hugin: {
     source: 'vendor_documented',
     ref: 'developer.hugin.com.tr — PC Link API v1 (okundu 2026-09-21)',
     transport: 'HTTPS REST :4443',
-    deviceProven: false,
+    deviceProven: 'cash_sale_printed',
+    deviceProvenDetail: {
+      device: 'HUGIN S1',
+      serial: 'FU00032768',
+      sfaVersion: '6.6.25-sp',
+      date: '2026-09-24',
+      /*
+       * A MALI FIS CAME OUT OF THE DEVICE. 24.09.2026, nakit, on the test
+       * unit FU00032768. Everything in `proven` below has now happened on
+       * real hardware rather than in a stub: the documented sale body -
+       * items[{name, amount, vatRate}] and payments[{type, amount}] - is the
+       * right shape, and the two-step POST /documents then PUT /documents/:id
+       * is the right conversation.
+       *
+       * The card path is still unproven and cannot be proven on THIS device:
+       * its only loaded bank application is the T.C. Merkez Bankasi test one,
+       * so there is no acquirer to authorise against. That waits on a device
+       * with a real uye isyeri agreement.
+       */
+      proven: ['tls', 'cert_pin', 'x_software_id', 'get_settings',
+               'start_sale', 'finish_sale', 'cash_receipt'],
+      unproven: ['card_sale', 'meal_card', 'void', 'x_report', 'z_report'],
+      note: 'Nakit mali fis basildi 24.09.2026. Kart yolu bu cihazda '
+          + 'kanitlanamaz - yuklu tek banka uygulamasi T.C. Merkez Bankasi '
+          + 'test uygulamasi, provizyon alinacak bir kurum yok.',
+    },
     contract: 'required_not_signed',
-    note: 'Iptal / iade / X-Z uc noktalari Postman referansinda; henuz elimizde degil.',
+    note: 'El sikisma ve ayar okuma gercek cihazda dogrulandi (FU00032768, '
+        + '24.09.2026). Satis govdesi hala yalnizca dokumandan; ilk mali fise '
+        + 'kadar wire_verified 0 kalir. Iptal / iade / X-Z uc noktalari '
+        + 'Postman referansinda; henuz elimizde degil.',
   },
+  /*
+   * Bu kayit artik bir tahmini degil, tahminin YANLIS CIKTIGINI anlatiyor.
+   * 'designed_guess' demek "henuz bilmiyoruz" demekti; artik biliyoruz.
+   */
   token: {
-    source: 'designed_guess',
-    ref: null,
-    transport: 'TCP :7600 (varsayim)',
+    source: 'vendor_documented',
+    ref: 'developer.tokeninc.com — Token X Connect Wire + Connect Cloud (okundu 2026-09-23)',
+    transport: 'USB/libusb (X30TR) veya RS232/FTDI (300TR), uretici DLL uzerinden; '
+             + 'alternatif: Token X Connect Cloud HTTPS REST',
     deviceProven: false,
     contract: 'required_not_signed',
-    note: 'Cerceveleme ve komut adlari tasarim; uretici dokumani alinmadi.',
+    note: 'ONCEKI TAHMIN (TCP :7600, GMP-3 JSON) YANLISTI. Tel protokolu sifreli '
+        + 'TLV; tag numaralari yayinlanmamis, disaridan yazilamaz. IntegrationHub.dll '
+        + 'zorunlu. Adaptor bu yuzden engellendi.',
+  },
+  beko: {
+    source: 'vendor_documented',
+    ref: 'developer.tokeninc.com — Beko 300TR / X30TR (okundu 2026-09-23)',
+    transport: 'Token ile ayni',
+    deviceProven: false,
+    contract: 'required_not_signed',
+    note: 'Beko cihazlari Token firmware calistiriyor; ayni kutuphane, ayni sozlesme.',
   },
   profilo: {
     source: 'designed_guess',

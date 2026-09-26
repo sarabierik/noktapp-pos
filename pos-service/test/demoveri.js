@@ -324,6 +324,49 @@ async function makeTenant() {
     await demo.clear(CID, { scope: 'hepsi' });
   });
 
+  /*
+   * THE GAP CHECK.
+   *
+   * "Her seyi sil" is a promise: the till comes back empty and the setup
+   * wizard starts again. A measurement of the live schema found 34
+   * client-scoped tables that survived it - business_settings, every
+   * fiscal_* child of a device that HAD been deleted, pricing targets, menu
+   * apply logs. Nobody had written them down as exceptions; they were simply
+   * never added to the lists, and each new migration made it worse.
+   *
+   * So the lists are no longer maintained by memory. Every table that scopes
+   * rows to a restaurant must be in TRANSACTIONAL, in CATALOGUE, or named in
+   * NEVER_CLEARED with a reason. A new migration that forgets fails here, by
+   * table name, instead of failing at an owner who pressed the button and got
+   * a till that still remembers.
+   */
+  await step('hiçbir kiracıya ait tablo silme listelerinin dışında kalmıyor', async () => {
+    const covered = new Set([...demo.TRANSACTIONAL, ...demo.CATALOGUE, ...demo.NEVER_CLEARED]);
+    const rows = await db.query(
+      'SELECT DISTINCT table_name AS t FROM information_schema.columns c '
+      + 'WHERE c.table_schema=DATABASE() '
+      + "AND c.column_name IN ('client_id','created_by_client_id') "
+      + 'AND EXISTS (SELECT 1 FROM information_schema.tables t '
+      + "           WHERE t.table_schema=DATABASE() AND t.table_name=c.table_name "
+      + "           AND t.table_type='BASE TABLE') ORDER BY table_name");
+    const missing = rows.map(r => String(r.t)).filter(t => !covered.has(t));
+    assert.deepStrictEqual(missing, [],
+      'bu tablolar "Her seyi sil" sonrasi ayakta kaliyor; TRANSACTIONAL, '
+      + 'CATALOGUE veya NEVER_CLEARED listesine gerekcesiyle ekleyin: '
+      + missing.join(', '));
+  });
+
+  await step('bir cihaz silindiğinde kendi kayıtları da gidiyor', async () => {
+    /* fiscal_devices was always cleared; its children were not, so a wiped
+       till could grow a new OKC carrying the old one's proof. */
+    for (const child of ['fiscal_device_capabilities', 'fiscal_device_ownership',
+      'fiscal_evidence', 'fiscal_departments', 'fiscal_vat_codes']) {
+      assert.ok(demo.CATALOGUE.includes(child), child + ' katalog temizligine dahil degil');
+      assert.ok(demo.CATALOGUE.indexOf(child) < demo.CATALOGUE.indexOf('fiscal_devices'),
+        child + ' fiscal_devices SONRASINA yazilmis - once cocuk, sonra ebeveyn');
+    }
+  });
+
   await step('kendi kiracısından başkasına dokunmaz', async () => {
     /* the whole point of client 77: the bench's own restaurant has to come
        out of this suite exactly as it went in */

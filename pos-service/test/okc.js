@@ -151,12 +151,37 @@ async function step(name, fn) {
   /* ------------------------------------------------------------------ */
 
   await step('the receipt limit and the line limit are the device\'s, and are read from it', async () => {
-    const d = await db.one('SELECT receipt_limit_minor, max_sale_lines, cashier_no, open_drawer FROM fiscal_devices WHERE id=?',
+    const d = await db.one('SELECT provider, receipt_limit_minor, max_sale_lines, cashier_no, open_drawer FROM fiscal_devices WHERE id=?',
       [deviceId]);
     assert.strictEqual(Number(d.receipt_limit_minor), 1200000, 'fis limiti 12000,00 olmali');
-    assert.strictEqual(Number(d.max_sale_lines), 40, 'satis paket limiti 40 olmali');
+    /*
+     * max_sale_lines used to be NOT NULL DEFAULT 40 and this check asserted the
+     * 40. That 40 is INGENICO GMP-3's documented figure and the column default
+     * was handing it to every brand, including HUGIN, whose reference gives no
+     * such number - so a 45-line bill was refused by the till for a device that
+     * may well have printed it. The column now means "what the operator
+     * entered", and NULL means nobody entered anything.
+     */
+    assert.strictEqual(d.max_sale_lines, null,
+      'kimse limit girmediyse kolon NULL olmali - 40 kolon defaulti idi, kimsenin karari degil');
     assert.strictEqual(Number(d.cashier_no), 1);
     assert.strictEqual(Number(d.open_drawer), 0, 'varsayilan "Cekmeceyi Acma" olmali');
+  });
+
+  /*
+   * Where the line limit comes from when the column is empty. Three tiers and
+   * the order matters: an operator's typed number wins, then the adapter's own
+   * protocol, then no cap at all.
+   */
+  await step('the line limit falls back to the adapter, per protocol, not to a constant', async () => {
+    const { Gmp3Adapter } = require('../src/fiscal/adapters/gmp3');
+    const { HuginPcLinkAdapter } = require('../src/fiscal/adapters/hugin');
+    const { SimulatorAdapter } = require('../src/fiscal/adapters/simulator');
+    assert.strictEqual(new Gmp3Adapter({}).maxSaleLines, 40,
+      'GMP-3 40 satir belgeliyor - sayi burada durmali');
+    assert.strictEqual(new HuginPcLinkAdapter({ device_ip: '127.0.0.1' }).maxSaleLines, null,
+      'PC Link referansi satir sayisi vermiyor: uydurulmus limit gercek satisi reddeder');
+    assert.strictEqual(new SimulatorAdapter({}).maxSaleLines, null);
   });
 
   await db.exec('DELETE FROM fiscal_departments WHERE fiscal_device_id=?', [deviceId]);

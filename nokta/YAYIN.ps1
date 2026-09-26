@@ -76,9 +76,6 @@ foreach ($eski in @('android\app\build.gradle', 'android\app\build.gradle.kts.ye
 }
 
 $sablon = @'
-import java.util.Properties
-import java.io.FileInputStream
-
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -88,10 +85,19 @@ plugins {
 
 // Imza bilgileri android/key.properties dosyasindan okunur.
 // O dosya git'e girmez ve hicbir pakete konmaz.
-val imzaAyar = Properties()
+//
+// TAM NITELIKLI ISIM, `import` YOK. Otel uygulamasinda bu dosyanin basindaki
+// `import java.util.Properties` AGP 9 altinda "unresolved reference" verdi ve
+// derleme bastan durdu. Kotlin DSL'de importlar dosyanin EN basinda, plugins
+// blogundan once olmak zorundadir; uretilen dosyanin basina bir BOM ya da tek
+// bir bos satir girmesi yeter, import artik ilk sey degildir ve cozulmez.
+// java.util.Properties() diye tam yazinca o sinif bagimliligi tamamen yok
+// olur - hicbir siralamaya bagli degil.
+val imzaAyar = java.util.Properties()
 val imzaDosyasi = rootProject.file("key.properties")
-if (imzaDosyasi.exists()) {
-    FileInputStream(imzaDosyasi).use { imzaAyar.load(it) }
+val imzaVar = imzaDosyasi.exists()
+if (imzaVar) {
+    imzaDosyasi.inputStream().use { imzaAyar.load(it) }
 }
 
 android {
@@ -112,19 +118,30 @@ android {
         versionName = flutter.versionName
     }
 
-    signingConfigs {
-        create("release") {
-            keyAlias = imzaAyar.getProperty("keyAlias")
-            keyPassword = imzaAyar.getProperty("keyPassword")
-            storePassword = imzaAyar.getProperty("storePassword")
-            val yol = imzaAyar.getProperty("storeFile")
-            if (yol != null) { storeFile = file(yol) }
+    // Imza yapilandirmasi YALNIZCA key.properties gercekten varsa kurulur.
+    // Kosulsuz kurulunca, anahtari olmayan bir makinede storeFile null kalir
+    // ve `flutter build apk --release` anlamsiz bir Gradle hatasiyla duser.
+    // Boyle: anahtar yoksa release yapisi debug anahtariyla imzalanir - Play'e
+    // yuklenemez ama telefona kurulur, ki denemek icin gereken tam olarak odur.
+    if (imzaVar) {
+        signingConfigs {
+            create("release") {
+                keyAlias = imzaAyar.getProperty("keyAlias")
+                keyPassword = imzaAyar.getProperty("keyPassword")
+                storePassword = imzaAyar.getProperty("storePassword")
+                val yol = imzaAyar.getProperty("storeFile")
+                if (yol != null) { storeFile = file(yol) }
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (imzaVar) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = false
             isShrinkResources = false
         }

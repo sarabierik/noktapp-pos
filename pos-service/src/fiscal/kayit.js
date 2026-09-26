@@ -95,6 +95,30 @@ async function matchSerial(rawSerial) {
  */
 async function commission(clientId, deviceId, rawSerial, { registryDeviceId = null } = {}) {
   let rec, prefix, serial;
+
+  /*
+   * An empty serial box used to blank a serial the device had already told us
+   * itself during pairing, because the UPDATE below writes serial_number
+   * unconditionally. A Hugin that had just introduced itself as FU00032768
+   * came back from this screen with no serial at all - and the adapter sends
+   * the serial in its headers, so the device stopped answering.
+   *
+   * Selecting the GIB model for an already-paired device is a normal thing to
+   * want, and it is not a request to forget the serial. So: an empty box means
+   * "keep what the device told us", and only a device that has never had one
+   * is refused.
+   */
+  if (!String(rawSerial || '').trim()) {
+    const known = await db.one(
+      'SELECT serial_number FROM fiscal_devices WHERE id=? AND client_id=?', [deviceId, clientId]);
+    if (known && String(known.serial_number || '').trim()) {
+      rawSerial = known.serial_number;
+    } else {
+      const e = new Error('Mali seri numarası boş. Cihazın üstündeki seriyi yazın '
+        + 'veya önce cihazı eşleştirin.');
+      e.status = 400; e.code = 'SERIAL_REQUIRED'; throw e;
+    }
+  }
   if (registryDeviceId) {
     rec = await byId(registryDeviceId);
     if (!rec) { const e = new Error('Kayıtlı cihaz bulunamadı'); e.status = 404; throw e; }

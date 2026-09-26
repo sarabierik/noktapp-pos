@@ -192,7 +192,7 @@ Screens.add({
     return new Promise((resolve) => {
       modal(`
         <div class="modal__head"><h3>${esc(title)}</h3><div class="spacer"></div>
-          <button class="close-x" onclick="closeModal()">✕</button></div>
+          <button class="close-x" data-close="1">✕</button></div>
         <div class="modal__body">
           <p class="muted" style="margin-top:0">${esc(help)}</p>
           <div class="field"><label>Gerekçe</label>
@@ -200,7 +200,7 @@ Screens.add({
           <div id="gsReasonAlert"></div>
         </div>
         <div class="modal__foot">
-          <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+          <button class="btn btn--ghost" data-close="1">Vazgeç</button>
           <button class="btn btn--primary" id="gsReasonOk">Onayla</button>
         </div>`);
       const ok = () => {
@@ -342,7 +342,7 @@ Screens.add({
       const r = await api('GET', '/api/guest/qr/flags');
       if (!r.categories.length) {
         $('#qmBody').innerHTML = `<div class="empty">Henüz kategori yok.
-          <div style="margin-top:12px"><button class="btn btn--primary btn--sm" onclick="go('kurulum')">Kuruluma git</button></div></div>`;
+          <div style="margin-top:12px"><button class="btn btn--primary btn--sm" data-go="kurulum">Kuruluma git</button></div></div>`;
         return;
       }
       $('#qmBody').innerHTML = `<div class="card"><div class="card__head">
@@ -638,7 +638,7 @@ Screens.add({
   msForm(c) {
     modal(`
       <div class="modal__head"><h3>${c.id ? 'Müşteriyi düzenle' : 'Yeni müşteri'}</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="split-2">
           <div class="field"><label>Ad</label><input class="input" id="msF" value="${esc(c.first_name || '')}"></div>
@@ -651,7 +651,7 @@ Screens.add({
           <input class="input" id="msB" type="date" value="${esc((c.birth_date || '').slice(0, 10))}"></div>
         <div id="msAlert"></div>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="msOk">Kaydet</button></div>`);
     $('#msOk').onclick = async () => {
       try {
@@ -678,7 +678,7 @@ Screens.add({
       const bills = r.orders || [];
       modal(`
         <div class="modal__head"><h3>${esc(this.gsName(c))} hangi adisyonda?</h3><div class="spacer"></div>
-          <button class="close-x" onclick="closeModal()">✕</button></div>
+          <button class="close-x" data-close="1">✕</button></div>
         <div class="modal__body">
           <p class="muted" style="margin-top:0">Adisyon kapandığında sadakat damgaları bu misafire yazılır.</p>
           ${bills.length ? bills.map(b => `
@@ -756,7 +756,7 @@ Screens.add({
     try { flags = await api('GET', '/api/guest/qr/flags'); } catch (e) { /* the picker degrades to "her ziyaret" */ }
     modal(`
       <div class="modal__head"><h3>${p.id ? 'Programı düzenle' : 'Yeni sadakat programı'}</h3>
-        <div class="spacer"></div><button class="close-x" onclick="closeModal()">✕</button></div>
+        <div class="spacer"></div><button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="field"><label>Program adı</label>
           <input class="input" id="lyTitle" value="${esc(p.title || '')}" placeholder="10 kahve 1 bedava"></div>
@@ -779,7 +779,7 @@ Screens.add({
           “Her ziyaret” seçilirse ödülün bir bedeli hesaplanamaz, açık yükümlülük raporunda 0 ₺ görünür.</p>
         <div id="lyAlert"></div>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="lyOk">Kaydet</button></div>`);
     $('#lyOk').onclick = async () => {
       try {
@@ -846,7 +846,7 @@ Screens.add({
       const SRC = { scan: 'okutma', order: 'adisyon', manual: 'elle' };
       modal(`
         <div class="modal__head"><h3>Kart hareketleri</h3><div class="spacer"></div>
-          <button class="close-x" onclick="closeModal()">✕</button></div>
+          <button class="close-x" data-close="1">✕</button></div>
         <div class="modal__body" style="padding:0">
           ${r.events.length ? `<table class="tbl"><thead><tr><th>Tarih</th><th>Hareket</th>
             <th>Kaynak</th><th>Gerekçe</th></tr></thead><tbody>
@@ -1075,7 +1075,7 @@ Screens.add({
                   <button class="btn btn--ghost" data-preset="restoran">Restoran</button>
                   <button class="btn btn--ghost" data-preset="bar">Bar</button>
                   <div class="spacer"></div>
-                  <button class="btn btn--ghost btn--sm" onclick="go('products')">Ürünler ekranı</button>
+                  <button class="btn btn--ghost btn--sm" data-go="products">Ürünler ekranı</button>
                 </div>
               </div></div>
           </div>

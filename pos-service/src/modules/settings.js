@@ -1298,38 +1298,92 @@ async function cancelJob(clientId, jobId) {
  *
  * `production` is refused for anything below beta: a restaurant must not be
  * able to point a live till at an unfinished adapter and find out at dinner.
+ *
+ * AND EACH BRAND HAS ITS OWN SHAPE OF CONNECTION, NOT JUST ITS OWN PROTOCOL.
+ *
+ * This is the part the code used to get wrong. `connection_type` was written
+ * to the database as 'tcp' for every device and never read back, and a
+ * `serial_port` column sat there that nothing touched - because every adapter
+ * we had spoke TCP, so nothing forced the question.
+ *
+ * Reading the manufacturers' own documents made it unavoidable:
+ *   Hugin S1   HTTPS REST on an IP address and port 4443.
+ *   Beko 300TR RS232 over an FTDI bridge, in a cradle. No IP at all.
+ *   Beko X30TR USB Type-C through libusb. No IP, and no port either - the
+ *              vendor's library finds the device itself; there is no address
+ *              to configure and no parameter to pass it.
+ *
+ * So asking a restaurant for an IP address is right for one brand and
+ * meaningless for another. Each provider now declares its connection shape,
+ * the screen asks only for the fields that shape needs, and the server
+ * refuses a device that is missing one. A cashier typing an IP address for a
+ * USB terminal is a support call that should never be possible to make.
  */
+/**
+ * How a brand is physically reached. `needs` is enforced on save.
+ */
+const CONNECTION = {
+  internal: { label: 'Dahili',                needs: [],
+              note: 'Kasanın içinde çalışır, bağlanacak bir cihaz yok.' },
+  tcp:      { label: 'Ağ (TCP/IP)',           needs: ['device_ip'],
+              note: 'Cihazın IP adresi ve portu gerekir.' },
+  serial:   { label: 'Seri port (RS232)',     needs: ['serial_port'],
+              note: 'Cihaz bir COM portuna bağlıdır; IP adresi yoktur.' },
+  usb:      { label: 'USB',                   needs: [],
+              note: 'Kabloyla bağlanır; adres yerine sürücü kurulumu gerekir.' },
+  library:  { label: 'Üretici kütüphanesi',   needs: [],
+              note: 'Cihazı üreticinin kütüphanesi kendisi bulur - '
+                  + 'girilecek bir adres ya da port yoktur.' },
+  cloud:    { label: 'Bulut (sunucu)',        needs: [],
+              note: 'Cihaza doğrudan değil, üreticinin bulut servisi üzerinden gidilir.' },
+};
+
 const PROVIDERS = [
-  { key: 'simulator', label: 'Simülatör (yazılım ÖKC)', status: 'ready',
+  { key: 'simulator', label: 'Simülatör (yazılım ÖKC)', status: 'ready', connection: 'internal',
     note: 'Donanım olmadan tüm ödeme akışını çalıştırır. Eğitim ve deneme için.',
     fields: [] },
-  { key: 'token', label: 'Token / Verifone', status: 'beta',
-    note: 'GMP-3 protokolü yazıldı. Cihazın firmware alan adları üreticinin entegrasyon dokümanıyla doğrulanmalı.',
-    fields: ['device_ip', 'device_port', 'serial_number'], defaultPort: 7600 },
-  { key: 'ingenico', label: 'Ingenico (Worldline)', status: 'closed',
+  /*
+   * 'beta' YANLIS BIR IDDIAYDI. Not "GMP-3 protokolu yazildi" diyordu; yazilan
+   * sey uydurulmus alan adlariyla TCP 7600'e konusan bir istemciydi ve boyle
+   * bir uc nokta hic olmadi. Uretici dokumani okununca ortaya cikti.
+   */
+  { key: 'token', label: 'Token / Verifone (300TR / X30TR)', status: 'closed', connection: 'library',
+    note: 'Üretici dokümanı okundu (developer.tokeninc.com, 23.09.2026). Önceki '
+        + '"GMP-3 / TCP 7600" varsayımı baştan sona yanlıştı: bağlantı X30TR\'de '
+        + 'USB (libusb + libusbK sürücüsü), 300TR\'de cradle üzerinde RS232 (FTDI). '
+        + 'Tel protokolü sıkıştırılmış ve şifrelenmiş TLV; tag numaraları yayınlanmamış, '
+        + 'bu yüzden dışarıdan yazılamaz — üreticinin IntegrationHub kütüphanesi zorunlu. '
+        + 'Bulut alternatifi (Token X Connect Cloud, HTTPS REST) var ama erişim bilgileri '
+        + 'yine sözleşmeden sonra veriliyor.',
+    fields: [] },
+  { key: 'ingenico', label: 'Ingenico (Worldline)', status: 'closed', connection: 'tcp',
     note: 'Türkiye\'de Ingenico ÖKC\'leri Worldline lisanslıdır ve Worldline GMP3 '
         + 'sözleşmesi kullanılmayacağına karar verildi (21.09.2026). Seçilemez.',
     fields: [] },
-  { key: 'hugin', label: 'Hugin (PC Link)', status: 'beta',
+  { key: 'hugin', label: 'Hugin (PC Link)', status: 'beta', connection: 'tcp',
     note: 'Üreticinin yayımladığı PC Link protokolüne yazıldı: HTTPS 4443, '
         + '/v1/documents. SDK/DLL gerekmiyor. Gerçek cihazda denenmedi ve '
         + 'Hugin entegrasyon sözleşmesi olmadan eşleşme yapılamaz.',
     fields: ['device_ip', 'device_port', 'serial_number', 'pclink_software_id'],
     defaultPort: 4443 },
-  { key: 'profilo', label: 'Profilo', status: 'sdk',
+  { key: 'profilo', label: 'Profilo', status: 'sdk', connection: 'tcp',
     note: 'Hugin firmware\'i olduğu VARSAYILIYORDU; doğrulanmadı. PC Link '
         + 'konuştuğu iddia edilmiyor, doğrulanmamış GMP-3 yolunda.',
     fields: ['device_ip', 'device_port', 'serial_number'], defaultPort: 7500 },
-  { key: 'beko', label: 'Beko', status: 'sdk',
-    note: 'Token firmware\'i ile aynı; aynı doğrulama gerekiyor.',
-    fields: ['device_ip', 'device_port', 'serial_number'], defaultPort: 7600 },
-  { key: 'olivetti', label: 'Olivetti', status: 'sdk',
+  { key: 'beko', label: 'Beko (300TR / X30TR)', status: 'closed', connection: 'library',
+    note: 'Üretici dokümanı okundu (developer.tokeninc.com, 23.09.2026) ve önceki '
+        + 'tahmin yanlış çıktı: TCP 7600 diye bir şey yok. X30TR USB (libusb), '
+        + '300TR ise cradle üzerinde RS232. Tel protokolü şifreli TLV ve tag '
+        + 'numaraları yayınlanmamış — üreticinin IntegrationHub kütüphanesi zorunlu. '
+        + 'Sözleşme ve test cihazı alınmadan seçilemez.',
+    fields: [] },
+  { key: 'olivetti', label: 'Olivetti', status: 'sdk', connection: 'tcp',
     note: 'Genel GMP-3 istemcisi bağlı, gerçek cihazda denenmedi.',
     fields: ['device_ip', 'device_port', 'serial_number'], defaultPort: 7500 },
-  { key: 'paygo', label: 'PayGo', status: 'planned',
+  { key: 'paygo', label: 'PayGo', status: 'planned', connection: 'tcp',
     note: 'Henüz yazılmadı. Eski sistemde de yalnızca boş bir sınıftı; seçilemez.',
     fields: [] },
-  { key: 'worldline', label: 'Worldline', status: 'closed',
+  { key: 'worldline', label: 'Worldline', status: 'closed', connection: 'tcp',
     note: 'GMP3 paketi incelendi ve kullanılmamasına karar verildi (21.09.2026). '
         + 'Gerekçeler fiscal/adapters/engelli.js içinde yazılı. Seçilemez.',
     fields: [] },
@@ -1509,8 +1563,28 @@ async function saveDevice(clientId, data) {
   if (prov.key === 'simulator' && env === 'production') {
     throw bad('Simülatör gerçek ortamda kullanılamaz; hiçbir mali fiş kesmez.');
   }
-  if (prov.fields.includes('device_ip') && !String(data.device_ip || '').trim()) {
-    throw bad(`${prov.label} için cihaz IP adresi zorunlu.`);
+  /*
+   * VALIDATE AGAINST THE BRAND'S CONNECTION SHAPE, NOT AGAINST TCP.
+   *
+   * This used to read "if the field list mentions device_ip, demand one",
+   * which quietly made TCP the only shape the product could express. A
+   * serial terminal has a COM port and no address; a USB one has neither,
+   * because the vendor's library finds it. Each brand says what it needs and
+   * this refuses a device that is missing it - by name, so the message tells
+   * the installer what to type rather than that something is wrong.
+   */
+  const shape = CONNECTION[prov.connection] || CONNECTION.tcp;
+  const LABEL = { device_ip: 'cihaz IP adresi', serial_port: 'COM portu (örn. COM3)' };
+  for (const need of shape.needs) {
+    if (!String(data[need] || '').trim()) {
+      throw bad(`${prov.label} için ${LABEL[need] || need} zorunlu. ${shape.note}`);
+    }
+  }
+  /* And the reverse: an address typed for a device that has none is not a
+     harmless extra. It is somebody about to spend an afternoon wondering why
+     the terminal will not answer on it. */
+  if (!shape.needs.includes('device_ip') && String(data.device_ip || '').trim()) {
+    throw bad(`${prov.label} bir IP adresiyle bağlanmaz (${shape.label}). ${shape.note}`);
   }
   const serial = String(data.serial_number || '').trim();
   if (serial) {
@@ -1526,8 +1600,13 @@ async function saveDevice(clientId, data) {
     provider: prov.key,
     environment: env,
     serial_number: serial,
+    /* The VKN from the add-device form. Pairing also writes it, but a person
+       who types it here should not have to type it again there. */
+    pclink_software_id: String(data.pclink_software_id || '').trim(),
     device_port: data.device_port ? Number(data.device_port) : prov.defaultPort || null,
-    connection_type: data.connection_type || 'tcp',
+    /* the brand's own shape - no longer 'tcp' for everything */
+    connection_type: prov.connection || data.connection_type || 'tcp',
+    serial_port: String(data.serial_port || '').trim() || null,
   });
 
   const warnings = [];
@@ -1560,15 +1639,59 @@ async function setDeviceActive(clientId, deviceId, active) {
   return true;
 }
 
+/**
+ * Deleting an OKC device is not one question but two, and the old code asked
+ * only the blunt one - "are there any transactions?" - which made a demo
+ * device with 529 simulator receipts as undeletable as a real one holding a
+ * year of tax documents. It is not: a simulator or test receipt is not a legal
+ * record and nothing outside this database will ever ask about it.
+ *
+ * So: a PRODUCTION receipt makes the device permanent. Anything else does not.
+ *
+ * environment is compared case-insensitively on purpose. fiscal_devices stores
+ * 'SIMULATOR' and 'production'; fiscal_transactions stores 'test'. The casing
+ * is inconsistent across the two tables and a plain = 'production' here would
+ * quietly read every uppercase PRODUCTION row as harmless.
+ *
+ * The folding happens in JS, NOT in SQL, and that is not a style preference.
+ * This connection runs a Turkish collation, so MySQL's LOWER('PRODUCTION')
+ * returns 'productıon' - with a dotless i - which matches nothing. The first
+ * version of this function used LOWER() in the query and therefore counted a
+ * real fiscal receipt as harmless and deleted the device a year of tax
+ * documents pointed at. JavaScript's toLowerCase() is locale-independent by
+ * specification; toLocaleLowerCase('tr') would reintroduce exactly the bug.
+ */
+const foldEnv = (v) => String(v || '').toLowerCase();
+
 async function deleteDevice(clientId, deviceId) {
-  const used = await db.value('SELECT COUNT(*) FROM fiscal_transactions WHERE client_id=? AND fiscal_device_id=?',
-    [clientId, deviceId]).catch(() => 0);
-  if (Number(used) > 0) {
+  const rows = await db.query(
+    'SELECT environment, COUNT(*) AS n FROM fiscal_transactions '
+    + 'WHERE client_id=? AND fiscal_device_id=? GROUP BY environment',
+    [clientId, deviceId]).catch(() => []);
+
+  const total = rows.reduce((a, r) => a + Number(r.n), 0);
+  const live = rows.filter(r => foldEnv(r.environment) === 'production')
+    .reduce((a, r) => a + Number(r.n), 0);
+
+  if (live > 0) {
     await setDeviceActive(clientId, deviceId, false);
-    return { deleted: false, message: `Bu cihazla ${used} mali işlem yapılmış. Silinmedi, devre dışı bırakıldı.` };
+    return { deleted: false, message: `Bu cihazla ${live} GERÇEK mali işlem yapılmış. `
+      + 'Mali belgeler cihaz kaydına bağlıdır; silinmedi, devre dışı bırakıldı.' };
+  }
+
+  /*
+   * No legal record depends on this device, so the rows that point at it go
+   * too - otherwise the delete leaves fiscal_transactions rows whose
+   * fiscal_device_id names a device that no longer exists.
+   */
+  if (total > 0) {
+    await db.exec('DELETE FROM fiscal_transactions WHERE client_id=? AND fiscal_device_id=?',
+      [clientId, deviceId]);
   }
   await db.exec('DELETE FROM fiscal_devices WHERE id=? AND client_id=?', [deviceId, clientId]);
-  return { deleted: true, message: 'Cihaz silindi.' };
+  return { deleted: true, message: total > 0
+    ? `Cihaz silindi (${total} deneme/simülatör kaydı da temizlendi).`
+    : 'Cihaz silindi.' };
 }
 
 /** Test a device connection, honestly - a stub adapter says it is a stub. */

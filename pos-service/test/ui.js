@@ -260,6 +260,52 @@ const { tarayiciAc } = require('./tarayici');
     await page.screenshot({ path: path.join(SHOTS, '08-reports.png') });
   });
 
+  /*
+   * The two things the Gun sonu screen gained, checked in the browser because
+   * both were reachable from nowhere before: POST /api/pos/fiscal/report had no
+   * caller in the entire application, and the close-day dialog ignored the
+   * ÖKC half of the server's answer.
+   */
+  await step('the day-close dialog warns that the device Z comes first', async () => {
+    await page.click('#rpClose');
+    await page.waitForSelector('#cdOk', { timeout: 8000 });
+    const body = await page.textContent('.modal__body');
+    assert.ok(/cihaz.n Z raporu/i.test(body),
+      'gun sonu penceresi cihaz Z raporundan hic bahsetmiyor');
+    /* The skip path must start hidden: it is an audited exception, not an option. */
+    assert.ok(await page.isHidden('#cdSkipOk'),
+      'ÖKC olmadan kapat butonu bastan gorunur - bu bir kacis yolu, secenek degil');
+    await page.click('.modal__foot .btn--ghost');
+  });
+
+  await step('the ÖKC report card stays hidden unless a real device is armed', async () => {
+    /*
+     * The bench has no real ÖKC - at most a simulator left behind by another
+     * suite - so the card must stay out of the way rather than offer an X and a
+     * Z that would print nothing and mean nothing. The server decides this and
+     * says so; the screen must not infer it from "the request succeeded", which
+     * is what the first version of this panel did.
+     */
+    const card = await page.$('#rpOkcCard');
+    assert.ok(card, 'ÖKC rapor karti hic basilmamis');
+    const state = await page.evaluate(async () => {
+      try {
+        const r = await api('GET', '/api/pos/fiscal/reports');
+        return { device: r.device, hidden: document.querySelector('#rpOkcCard').hidden };
+      } catch (e) { return { error: String(e.message), hidden: document.querySelector('#rpOkcCard').hidden }; }
+    });
+    if (!state.device) {
+      assert.strictEqual(state.hidden, true,
+        'gercek cihaz yokken ÖKC rapor karti gorunmemeli (simulator cihaz sayilmaz)');
+    } else {
+      assert.strictEqual(state.hidden, false, 'gercek cihaz varken kart gorunmeli');
+      if (!state.device.armed) {
+        assert.ok(await page.isDisabled('#rpOkcZ'),
+          'uretime acilmamis cihazda Z butonu basilabilir kalmis');
+      }
+    }
+  });
+
   await step('the products page lists the menu with prices and VAT', async () => {
     // one product screen now: the list grouped by category, with margin
     await page.click('.nav__item[data-page="products"]');
@@ -305,6 +351,59 @@ const { tarayiciAc } = require('./tarayici');
   await step('no JavaScript errors were raised anywhere in that walk', async () => {
     const real = errors.filter(e => !e.includes('favicon') && !e.includes('ERR_'));
     if (real.length) throw new Error(real.slice(0, 4).join(' | '));
+  });
+
+  /*
+   * The CSP forbids inline event handlers, so an onclick written into the
+   * markup is not a style choice - it is a dead button. 125 of them shipped
+   * this way and every Vazgec, close X and Anladim in the program did nothing
+   * for as long as the header has been set, because the browser refuses them
+   * silently and the suites called the handlers directly instead of clicking.
+   *
+   * This check is a grep rather than a click because it has to cover the
+   * markup no walk happens to open.
+   */
+  await step('no inline on*= handlers in the served UI (the CSP refuses them)', async () => {
+    const fs = require('fs');
+    const dir = path.join(__dirname, '..', 'public');
+    const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => {
+      const full = path.join(d, e.name);
+      return e.isDirectory() ? walk(full) : (/\.(js|html)$/.test(e.name) ? [full] : []);
+    });
+    const bad = [];
+    for (const f of walk(dir)) {
+      /* comments talk ABOUT these handlers; strip them before looking */
+      const src = fs.readFileSync(f, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '');
+      const hits = src.match(/on(?:click|change|input|submit|load|error)="/g);
+      if (hits) bad.push(`${path.relative(dir, f)} (${hits.length})`);
+    }
+    assert.strictEqual(bad.length, 0,
+      'inline handler(s) the CSP will refuse: ' + bad.join(', ')
+      + ' — use data-close / data-go, or bind in JS');
+  });
+
+  /*
+   * api() used to throw `new Error(json.error)` and drop the server's `code`,
+   * so every screen matching on e.code was comparing against undefined and
+   * silently taking the else branch. The day-end depends on telling
+   * FISCAL_Z_FAILED apart from any other refusal, so this is checked in the
+   * real page rather than by reading the source.
+   */
+  await step('a refused call carries the server code, not just its message', async () => {
+    const out = await page.evaluate(async () => {
+      try {
+        await api('POST', '/api/pos/orders/999999999/fiscal/pay', { method: 'kredi_karti' });
+        return { threw: false };
+      } catch (e) {
+        return { threw: true, hasCode: 'code' in e, status: e.status, msg: String(e.message || '') };
+      }
+    });
+    assert.strictEqual(out.threw, true, 'olmayan adisyon icin hata beklenirdi');
+    assert.strictEqual(out.hasCode, true,
+      'api() sunucunun code alanini atiyor - ekranlar undefined ile karsilastirir');
+    assert.ok(out.status >= 400, 'HTTP durumu hataya takilmali');
   });
 
   await browser.close();

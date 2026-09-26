@@ -585,11 +585,23 @@ function probeValue(def, current) {
     const by = {};
     for (const p of r.providers) by[p.key] = p;
     assert.strictEqual(by.simulator.status, 'ready', 'the simulator is the one thing that really works');
-    assert.strictEqual(by.token.status, 'beta', 'token is implemented but unverified');
     /* Hugin is 'beta' rather than 'sdk' because there is no SDK to obtain -
        the manufacturer publishes the protocol. Implemented, unverified. */
     assert.strictEqual(by.hugin.status, 'beta', 'hugin is misdescribed');
-    for (const stub of ['profilo', 'beko', 'olivetti']) {
+    /*
+     * Token and Beko are CLOSED, and the reason is worth a line here because
+     * the screen used to say the opposite. Token was 'beta' - "GMP-3 protokolu
+     * yazildi" - describing a TCP 7600 client with invented field names. The
+     * manufacturer's own documentation (23.09.2026) says there is no TCP at
+     * all: USB on the X30TR, RS232 on the 300TR, and an encrypted TLV wire
+     * whose tags are unpublished. A screen that offers a driver we know cannot
+     * reach a device is worse than one that offers nothing.
+     */
+    for (const shut of ['token', 'beko']) {
+      assert.strictEqual(by[shut].status, 'closed', shut + ' is still offered as if it worked');
+      assert.ok(/USB|RS232|TLV/.test(by[shut].note), shut + ' does not say why it is closed');
+    }
+    for (const stub of ['profilo', 'olivetti']) {
       assert.strictEqual(by[stub].status, 'sdk', stub + ' is presented as finished');
       assert.ok(by[stub].note.length > 20, stub + ' has no explanation');
     }
@@ -633,11 +645,11 @@ function probeValue(def, current) {
   });
 
   await step('a driver no device has answered cannot be pointed at a real shop', async () => {
-    /* Hugin's protocol is the manufacturer's own, which is better founded than
-       Token's guessed framing - and still not proof. Both are refused for the
-       real environment, because a tax document does not care how well we read
-       the specification. */
-    for (const p of ['hugin', 'token']) {
+    /* Hugin's protocol is the manufacturer's own - and that is still not proof.
+       It is refused for the real environment, because a tax document does not
+       care how well we read the specification. (Token used to be swept here
+       too; it is now refused one step earlier, as a closed provider.) */
+    for (const p of ['hugin']) {
       const r = await api('POST', '/api/settings/okc/devices', {
         provider: p, serial_number: 'PRD-' + p, device_ip: '192.168.1.61', environment: 'production' });
       assert.strictEqual(r.status, 400, p + ': an unverified driver was allowed into production');
@@ -688,7 +700,7 @@ function probeValue(def, current) {
     const dup = await api('POST', '/api/settings/okc/registers', { name: 'Kasa 1 tekrar', code: 'KASA1' });
     assert.strictEqual(dup.status, 400, 'a duplicate register code was accepted');
     const dev = await api('POST', '/api/settings/okc/devices', {
-      provider: 'token', serial_number: 'TKN-1', device_ip: '192.168.1.70',
+      provider: 'hugin', serial_number: 'HGN-1', device_ip: '192.168.1.70',
       environment: 'test', cash_register_id: reg.id });
     assert.strictEqual(dev.status, 200, JSON.stringify(dev));
     const list = await api('GET', '/api/settings/okc');
@@ -696,11 +708,111 @@ function probeValue(def, current) {
     assert.strictEqual(Number(list.registers.find(x => x.id === reg.id).device_count), 1);
   });
 
+  /* ============== each brand's own way of being reached =============== */
+  /*
+   * The point these three checks defend: a POS that supports more than one ÖKC
+   * brand cannot assume they are reached the same way. Hugin answers on an IP
+   * address; a Beko 300TR is a serial terminal in a cradle; a Beko X30TR is a
+   * USB device the vendor's library finds by itself. `connection_type` was
+   * written as 'tcp' for every device and never read, so nothing stopped the
+   * screen demanding an IP address for a device that has none.
+   */
+  await step('each brand declares how it is physically reached', async () => {
+    const r = await api('GET', '/api/settings/okc');
+    const by = {};
+    for (const p of r.providers) by[p.key] = p;
+    assert.strictEqual(by.hugin.connection, 'tcp', 'hugin answers on an address');
+    assert.strictEqual(by.simulator.connection, 'internal', 'the simulator has nothing to connect to');
+    /* Token and Beko: the DLL discovers the device; there is no address and
+       no port to pass it. See developer.tokeninc.com, 23.09.2026. */
+    assert.strictEqual(by.token.connection, 'library', 'token still described as addressable');
+    assert.strictEqual(by.beko.connection, 'library', 'beko still described as addressable');
+  });
+
+  await step('a network device without an address is refused, by name', async () => {
+    const r = await api('POST', '/api/settings/okc/devices', {
+      provider: 'hugin', serial_number: 'NOIP-1', environment: 'test' });
+    assert.strictEqual(r.status, 400, 'a TCP device was accepted with no address');
+    assert.ok(/IP adresi/i.test(r.error), 'the refusal does not say what is missing: ' + r.error);
+  });
+
+  await step('the connection shape is stored, not assumed to be tcp', async () => {
+    const dev = await api('POST', '/api/settings/okc/devices', {
+      provider: 'hugin', serial_number: 'SHAPE-1', device_ip: '192.168.1.91', environment: 'test' });
+    assert.strictEqual(dev.status, 200, JSON.stringify(dev));
+    const row = await db.one('SELECT connection_type FROM fiscal_devices WHERE id=?', [dev.id]);
+    assert.strictEqual(row.connection_type, 'tcp', 'hugin should record tcp');
+    /* and the column that nothing used to write is writable */
+    await db.exec("UPDATE fiscal_devices SET serial_port='COM3' WHERE id=?", [dev.id]);
+    const back = await db.one('SELECT serial_port FROM fiscal_devices WHERE id=?', [dev.id]);
+    assert.strictEqual(back.serial_port, 'COM3', 'serial_port does not persist');
+  });
+
   await step('a device can be switched off without losing its record', async () => {
     const list = await api('GET', '/api/settings/okc');
-    const d = list.devices.find(x => x.serial_number === 'TKN-1');
+    const d = list.devices.find(x => x.serial_number === 'HGN-1');
     await api('POST', `/api/settings/okc/devices/${d.id}/active`, { active: false });
     assert.strictEqual(Number((await db.one('SELECT is_active FROM fiscal_devices WHERE id=?', [d.id])).is_active), 0);
+  });
+
+  /*
+   * Deleting a device asks about LEGAL records, not about records.
+   *
+   * The old rule refused on any transaction at all, which meant a demo device
+   * carrying 529 simulator receipts could never be removed from the list -
+   * exactly the state a real install ends up in after training. A simulator
+   * or test receipt is not a tax document and nothing outside this database
+   * will ever ask about it.
+   */
+  const delFixture = async (serial, env, n) => {
+    /*
+     * Insert the row directly. fiscal.saveDevice has an upsert path that can
+     * hand back an EXISTING simulator's id rather than a new one, so two
+     * fixtures quietly became one device and the second delete found no
+     * transactions to refuse over - a green-looking pass for the wrong reason.
+     */
+    const id = await db.insert(
+      'INSERT INTO fiscal_devices (client_id, provider, device_model, serial_number, '
+      + 'connection_type, environment, is_active) VALUES (?,?,?,?,?,?,1)',
+      [CID, 'simulator', 'Silme Testi', serial, 'internal', 'simulator']);
+    for (let i = 0; i < n; i++) {
+      await db.exec(
+        'INSERT INTO fiscal_transactions (client_id, idempotency_key, order_id, provider, '
+        + 'environment, payment_method, fiscal_device_id) VALUES (?,?,?,?,?,?,?)',
+        [CID, `sil-${serial}-${i}-${Date.now()}`, 1, 'simulator', env, 'cash', id]);
+    }
+    return id;
+  };
+
+  await step('a device with only test receipts is deleted, and they go with it', async () => {
+    const id = await delFixture('SIL-TEST-1', 'test', 3);
+    const r = await api('DELETE', `/api/settings/okc/devices/${id}`);
+    assert.strictEqual(r.deleted, true, 'deneme kaydi silmeyi engelledi: ' + JSON.stringify(r.body));
+    assert.strictEqual(await db.one('SELECT id FROM fiscal_devices WHERE id=?', [id]), null);
+    const left = await db.value('SELECT COUNT(*) FROM fiscal_transactions WHERE fiscal_device_id=?', [id]);
+    assert.strictEqual(Number(left), 0, 'cihaz gitti ama kayitlari oksuz kaldi');
+  });
+
+  await step('one real receipt makes the device permanent', async () => {
+    const id = await delFixture('SIL-GERCEK-1', 'production', 1);
+    const r = await api('DELETE', `/api/settings/okc/devices/${id}`);
+    assert.strictEqual(r.deleted, false, 'GERCEK mali kayitli cihaz silindi');
+    assert.match(r.message, /GERÇEK/, r.message);
+    const row = await db.one('SELECT is_active FROM fiscal_devices WHERE id=?', [id]);
+    assert.ok(row, 'cihaz kaydi yok oldu');
+    assert.strictEqual(Number(row.is_active), 0, 'silinmedi ama kapatilmadi da');
+  });
+
+  /*
+   * The casing trap: fiscal_devices writes 'SIMULATOR'/'production',
+   * fiscal_transactions writes 'test'. A plain = 'production' comparison
+   * reads every uppercase PRODUCTION row as harmless and deletes the device
+   * that a year of tax documents points at.
+   */
+  await step('PRODUCTION in capitals counts as a real receipt too', async () => {
+    const id = await delFixture('SIL-GERCEK-2', 'PRODUCTION', 1);
+    const r = await api('DELETE', `/api/settings/okc/devices/${id}`);
+    assert.strictEqual(r.deleted, false, 'buyuk harfli PRODUCTION gozden kacti');
   });
 
   /* ==================== 5. business, hours, currency ================= */

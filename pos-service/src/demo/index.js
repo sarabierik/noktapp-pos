@@ -220,6 +220,24 @@ const TRANSACTIONAL = [
   'app_order_counters', 'order_counters',
   'orders',
   'audit_logs', 'deleted_activity_log', 'np_app_log', 'np_mail_queue',
+  /*
+   * Added after a measurement rather than a hunch: a count of every
+   * client-scoped table against these two lists found 34 of them surviving
+   * "Her seyi sil". The owner presses it expecting an empty till and gets one
+   * that still remembers.
+   */
+  /*
+   * v_waiter_performance is named like a view and is a BASE TABLE - a
+   * materialised per-order report. It holds one row per closed bill, so it
+   * belongs with the bills, not with the menu.
+   */
+  'v_waiter_performance',
+  'app_device_number_history', 'station_logins',
+  'costs', 'crm_messages', 'daily_finance_snapshots',
+  'inventory_stock_cache', 'pricing_notifications',
+  'np_menu_apply_log', 'np_settings_log',
+  'fiscal_attempts', 'fiscal_device_commands', 'fiscal_operations',
+  'fiscal_outbox', 'fiscal_provider_logs',
 ];
 
 const CATALOGUE = [
@@ -233,9 +251,41 @@ const CATALOGUE = [
   'loyalty_programs', 'customers',
   'user_permissions', 'app_device_tokens', 'app_device_numbers', 'np_mobile_pairings',
   'users',
+  /*
+   * The device's OWN state, and it has to go before fiscal_devices does.
+   * Deleting the device row while leaving its departments, VAT codes,
+   * capabilities, ownership and evidence behind is how a till wiped clean
+   * grows a new OKC that is already armed with somebody else's proof.
+   */
+  'fiscal_evidence', 'fiscal_device_capabilities', 'fiscal_device_secrets',
+  'fiscal_device_ownership', 'fiscal_departments', 'fiscal_vat_codes',
+  'fiscal_agent_pairings', 'fiscal_agents',
   'doviz_kur_gecmisi', 'doviz_kurlari', 'cash_registers', 'fiscal_devices',
   'np_int_menu_map', 'np_int_connections',
+  /* credentials belong to the users they authenticate */
+  'app_passkeys', 'app_remember_tokens',
+  'pricing_targets', 'pricing_strategy',
+  'qr_menu_assets', 'qr_menu_settings',
+  /* "hepsi" promises the setup wizard starts again; it cannot if the
+     business it already configured is still on file */
+  'business_settings',
 ];
+
+/*
+ * NEVER DELETED, whatever the scope, and each for its own reason:
+ *
+ *   clients          the restaurant itself. Deleting it does not reset the
+ *                    till, it unmakes it.
+ *   np_licence       the licence this installation runs on. Wiping demo data
+ *                    must never cost somebody their licence.
+ *   np_login_cache   what lets the owner sign in when the internet is down -
+ *                    the worst possible moment to discover it was cleared.
+ *
+ * Anything else that is client-scoped and NOT in one of the two lists above
+ * is a gap, and test/demoveri.js fails on it by name rather than waiting for
+ * an owner to notice.
+ */
+const NEVER_CLEARED = ['clients', 'np_licence', 'np_login_cache'];
 
 /** The column that scopes a row to this restaurant, or null if there is none. */
 async function ownerColumn(table) {
@@ -251,10 +301,17 @@ async function ownerColumn(table) {
 
 /** Tables this database does not have (they arrive with later migrations). */
 async function existing(names) {
+  /*
+   * BASE TABLE only. information_schema.tables also lists views, and this
+   * database has them (v_valid_orders, v_waiter_performance). A DELETE aimed
+   * at a view either fails or, worse, succeeds against whatever it is built
+   * on.
+   */
   const rows = await db.query(
-    'SELECT table_name AS t FROM information_schema.tables WHERE table_schema=DATABASE()');
+    'SELECT table_name AS t FROM information_schema.tables '
+    + "WHERE table_schema=DATABASE() AND table_type='BASE TABLE'");
   const have = new Set(rows.map(r => String(r.t)));
-  return names.filter(n => have.has(n));
+  return names.filter(n => have.has(n) && !NEVER_CLEARED.includes(n));
 }
 
 /** The delete itself, without the settings bookkeeping around it. */
@@ -348,4 +405,4 @@ async function seedOnFirstBoot(clientId) {
 }
 
 module.exports = { status, seed, clear, wipe, seedOnFirstBoot, isDemoBuild, MARKER,
-  TRANSACTIONAL, CATALOGUE };
+  TRANSACTIONAL, CATALOGUE, NEVER_CLEARED };

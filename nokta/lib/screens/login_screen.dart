@@ -55,14 +55,29 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  String get _cleanPhone => _phone.text.replaceAll(RegExp(r'\D'), '');
+  /// Everything that is not a digit, gone: "0532 111 22 33" and "+90 532 111
+  /// 22 33" are the same person typing the same number.
+  String get _digits => _phone.text.replaceAll(RegExp(r'\D'), '');
 
-  bool get _phoneLooksRight {
-    var d = _cleanPhone;
+  /// THE ONE SPELLING THAT LEAVES THIS SCREEN.
+  ///
+  /// 5321112233 - ten digits, no leading zero, no country code. The check
+  /// below used to strip 0 and 90 before deciding the number was valid, and
+  /// then the RAW digits were sent to the server anyway. So a guest who typed
+  /// 0532... passed validation and registered as "05321112233", while the same
+  /// guest typing 532... the next time was a different string - and on a
+  /// server that keys a guest by their phone number, a different string is a
+  /// different person with none of their stamps.
+  ///
+  /// Normalised once, here, and used for both.
+  String get _normalPhone {
+    var d = _digits;
     if (d.length == 12 && d.startsWith('90')) d = d.substring(2);
     if (d.length == 11 && d.startsWith('0')) d = d.substring(1);
-    return RegExp(r'^5\d{9}$').hasMatch(d);
+    return d;
   }
+
+  bool get _phoneLooksRight => RegExp(r'^5\d{9}$').hasMatch(_normalPhone);
 
   Future<void> _go() async {
     FocusScope.of(context).unfocus();
@@ -81,10 +96,10 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() { _busy = true; _error = null; _hint = null; });
     try {
       if (_mode == _Mode.signIn) {
-        await Api.instance.login(phone: _cleanPhone, password: _password.text);
+        await Api.instance.login(phone: _normalPhone, password: _password.text);
       } else {
         await Api.instance.register(
-          phone: _cleanPhone,
+          phone: _normalPhone,
           firstName: _firstName.text.trim(),
           lastName: _lastName.text.trim(),
           password: _password.text,

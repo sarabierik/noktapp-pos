@@ -30,9 +30,31 @@ async function api(method, path, body) {
   });
   let json = {};
   try { json = await res.json(); } catch (_) {}
-  if (res.status === 401) { lock(); throw new Error(json.error || 'Oturum sona erdi'); }
-  if (!res.ok || json.ok === false) throw new Error(json.error || 'İşlem tamamlanamadı');
+  if (res.status === 401) { lock(); throw fault(json, res, 'Oturum sona erdi'); }
+  if (!res.ok || json.ok === false) throw fault(json, res, 'İşlem tamamlanamadı');
   return json;
+}
+
+/**
+ * Turn a failed response into an Error that still carries WHY it failed.
+ *
+ * This threw `new Error(json.error)` and nothing else, which quietly discarded
+ * every machine-readable `code` the server sends - and the server sends them
+ * precisely so a screen can tell one refusal from another. The day-end needs
+ * to know that a close was refused by FISCAL_Z_FAILED (offer the audited
+ * skip) rather than by a locked shift (do not), and it could not: both
+ * arrived as a bare message string. Any screen matching on e.code was
+ * comparing against undefined and silently taking the else branch.
+ *
+ * The status and the whole body ride along too, so a caller can read extra
+ * fields the server attached without a second request.
+ */
+function fault(json, res, fallback) {
+  const e = new Error((json && json.error) || fallback);
+  e.code = (json && json.code) || null;
+  e.status = res ? res.status : 0;
+  e.body = json || {};
+  return e;
 }
 
 /* --------------------------------------------------------------- helpers */
@@ -75,12 +97,35 @@ function closeModal() { $('#modalBack').classList.remove('is-on'); $('#modal').i
 $('#modalBack').addEventListener('mousedown', (e) => { if (e.target.id === 'modalBack') closeModal(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 
+/*
+ * Dismiss buttons, delegated - and the reason is worth writing down.
+ *
+ * Every one of these used to be onclick="closeModal()" written straight into
+ * the markup, 125 of them across 13 files. They had not worked since the day
+ * the Content-Security-Policy header went in: script-src 'self' forbids inline
+ * event handlers, so the browser refused each one silently, logging
+ * "Refused to execute inline event handler" to a console nobody reads. Every
+ * Vazgeç, every close X, every Anladım in the program did nothing, and the
+ * suites never caught it because they call the handlers directly instead of
+ * clicking like a person does.
+ *
+ * Delegated from document on purpose: modals are rebuilt with innerHTML all
+ * the time, and a listener bound to a button dies with the button. This one
+ * outlives every redraw and covers markup that does not exist yet.
+ */
+document.addEventListener('click', (e) => {
+  const close = e.target.closest('[data-close]');
+  if (close) { closeModal(); return; }
+  const goTo = e.target.closest('[data-go]');
+  if (goTo) { closeModal(); go(goTo.dataset.go); }
+});
+
 /** Ask a supervisor for their PIN before a sensitive action. */
 function askOverride(perm, label) {
   return new Promise((resolve) => {
     modal(`
       <div class="modal__head"><h3>Yetkili onayı</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <p class="muted" style="margin-top:0">${esc(label || 'Bu işlem için yetkili PIN gerekli.')}</p>
         <div class="field"><label>Yetkili PIN</label>
@@ -88,7 +133,7 @@ function askOverride(perm, label) {
         <div id="ovAlert"></div>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="ovOk">Onayla</button>
       </div>`);
     $('#ovOk').onclick = async () => {

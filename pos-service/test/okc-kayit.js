@@ -108,6 +108,19 @@ async function refuses(fn, code, what) {
     await refuses(() => kayit.matchSerial('ZZ9999'), 'PREFIX_UNKNOWN', 'bilinmeyen prefix');
   });
 
+  /*
+   * A serial read off the real Hugin S1 standing in the office, not one we
+   * invented. The registry is a transcription of the GIB list, and a
+   * transcription is only worth what a real device says about it: this is the
+   * one check here whose input came from hardware.
+   */
+  await step("the office Hugin S1's own serial resolves to the S1 record", async () => {
+    const m = await kayit.matchSerial('FU00032768');
+    assert.strictEqual(m.prefix, 'FU');
+    assert.strictEqual(m.record.brand_model, 'HUGIN S1');
+    assert.strictEqual(m.record.owner_key, 'hugin');
+  });
+
   /* ------------------------------------------------------------ money   */
 
   await step('the arithmetic fixture holds exactly', async () => {

@@ -273,14 +273,36 @@ r.post('/devices/:id/pair', wrap(async (req, res) => {
     return fail(res, e.message, e.status || 502, { code: e.code || 'PAIR_FAILED' });
   }
 
+  /*
+   * The device's own settings are kept, verbatim.
+   *
+   * `adapter.pair()` has always returned them - GET /v1/settings is the
+   * pairing call - and this route threw them away. They are the only place the
+   * till ever learns what the device itself says about its limits, its fiscal
+   * licence period and its configured VAT and department tables, and they
+   * cannot be re-read once the device is in normal service without another
+   * round trip.
+   *
+   * Stored as the raw JSON the device sent, with no invented column schema on
+   * top. We do not know every key HUGIN puts in there and guessing one would
+   * produce a field labelled "Lisans bitişi" containing whatever happened to
+   * be in a similarly-named property. The kayıt defteri screen renders whatever
+   * is actually there and names it as the device named it.
+   */
+  let settingsJson = null;
+  try {
+    settingsJson = paired.settings ? JSON.stringify(paired.settings).slice(0, 60000) : null;
+  } catch (_) { settingsJson = null; }
+
   await db.exec(
     `UPDATE fiscal_devices
         SET serial_number=?, serial_raw=?, pclink_software_id=?, pclink_hardware_id=?,
             pclink_cert_sha256=?, pclink_cert_subject=?, pclink_sfa_version=?,
+            pclink_settings_json=?, pclink_settings_at=NOW(),
             pclink_paired_at=NOW(), device_ip=?, device_port=?
       WHERE id=? AND client_id=?`,
     [paired.serialNo, paired.serialNo, softwareId, hardwareId,
-     paired.certSha256, paired.certSubject, paired.sfaVersion,
+     paired.certSha256, paired.certSubject, paired.sfaVersion, settingsJson,
      adapter.host, adapter.port, id, req.clientId]);
 
   log.info('okc', 'Hugin cihazı eşleşti', {
@@ -333,10 +355,26 @@ r.post('/devices/:id/diagnostics', wrap(async (req, res) => {
   checks.push({ name: 'Kayıt defteri kimliği', device_effect: false,
     pass: !!d.registry_device_id,
     detail: d.registry_device_id ? `Prefix ${d.fiscal_prefix}` : 'Cihaz GİB listesinden seçilmemiş' });
+  /*
+   * wire_verified is a GMP-3 gate, not a universal one. gmp3.js refuses to put
+   * a message on the wire without it; hugin.js never reads it, because PC Link
+   * is a documented HTTPS API and its own certificate pin is the check that
+   * matters there.
+   *
+   * Reporting one sentence for both brands was actively misleading: a paired,
+   * answering HUGIN S1 was told "simülatör dışında çalışmaz", which is false
+   * and sends somebody hunting for a switch that does not gate their device.
+   * So the check now says what the flag does FOR THIS BRAND.
+   */
+  const WIRE_GATED = ['ingenico', 'worldline', 'pavo', 'profilo', 'propay'];
+  const wireGates = WIRE_GATED.includes(String(d.provider || '').toLowerCase());
   checks.push({ name: 'Mesaj katmanı doğrulandı', device_effect: false,
-    pass: !!d.wire_verified,
+    pass: !!d.wire_verified || !wireGates,
     detail: d.wire_verified ? 'wire_verified = 1'
-      : 'Üretici ECR/GMP-3 dokümanı ile doğrulanmadı; simülatör dışında çalışmaz' });
+      : wireGates
+        ? 'Üretici ECR/GMP-3 dokümanı ile doğrulanmadı; simülatör dışında çalışmaz'
+        : `${d.provider} bu bayrağı kullanmaz — mesaj katmanı sürücünün kendi `
+          + 'sözleşmesiyle belirlenir (PC Link: sertifika sabitleme). Satışı engellemez.' });
   const caps = await yetenek.profile(req.clientId, id);
   checks.push({ name: 'Yetenek kanıtı', device_effect: false,
     pass: caps.some(c => c.state === 'VERIFIED'),

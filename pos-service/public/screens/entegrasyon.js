@@ -389,7 +389,7 @@ markReady = /orders/{orderId}/ready"></textarea>
         </details>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="entSave">Kaydet</button>
       </div>`, { wide: true });
 
@@ -446,7 +446,7 @@ markReady = /orders/{orderId}/ready"></textarea>
             Bu platformun resmî uç nokta dokümanı yayımlanmıyor. Kimlik bilgileriniz kaydedildi;
             iş ortağı paketindeki adresleri "Uç noktalar" bölümüne girdiğinizde canlıya alınabilir.</p>` : ''}
         </div>
-        <div class="modal__foot"><button class="btn btn--primary" onclick="closeModal()">Tamam</button></div>`);
+        <div class="modal__foot"><button class="btn btn--primary" data-close="1">Tamam</button></div>`);
       this.entReload();
     } catch (e) { err(e); }
   },
@@ -578,7 +578,7 @@ markReady = /orders/{orderId}/ready"></textarea>
           <input class="input" id="entAcceptPrep" type="number" min="1" max="240" value="20"></div>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="entAcceptOk">Onayla</button></div>`);
     $('#entAcceptOk').onclick = async () => {
       try {
@@ -609,7 +609,7 @@ markReady = /orders/{orderId}/ready"></textarea>
           <input class="input" id="entRejNote" maxlength="190"></div>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--danger" id="entRejOk">Reddet</button></div>`);
     $('#entRejOk').onclick = async () => {
       try {
@@ -668,7 +668,7 @@ markReady = /orders/{orderId}/ready"></textarea>
             <td>${esc(l.action)}</td>
             <td class="${l.level === 'error' ? 'is-loss' : ''}">${esc(l.message)}</td></tr>`).join('')}</tbody></table>
       </div>
-      <div class="modal__foot"><button class="btn btn--primary" onclick="closeModal()">Kapat</button></div>`,
+      <div class="modal__foot"><button class="btn btn--primary" data-close="1">Kapat</button></div>`,
       { wide: true });
 
     $('#entReprint').onclick = async () => {

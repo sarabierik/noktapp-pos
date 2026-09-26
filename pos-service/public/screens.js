@@ -267,7 +267,7 @@ const Screens = {
       const free = (App.data.tables || []).filter(t => !t.open_bills && !t.group_id);
       modal(`
         <div class="modal__head"><h3>${esc(g.name)}</h3><div class="spacer"></div>
-          <button class="close-x" onclick="closeModal()">✕</button></div>
+          <button class="close-x" data-close="1">✕</button></div>
         <div class="modal__body">
           <div class="alert alert--info" style="margin-bottom:12px">
             ${g.tables.length} masa, tek adisyon. Hesap ana masada durur;
@@ -353,7 +353,7 @@ const Screens = {
         <div class="modal__head"><h3>${esc(tableName)}</h3>
           <span class="badge badge--gray">${bills.length} açık adisyon</span>
           <div class="spacer"></div>
-          <button class="close-x" onclick="closeModal()">✕</button></div>
+          <button class="close-x" data-close="1">✕</button></div>
         <div class="modal__body">
           ${bills.map(b => `<button class="btn btn--ghost btn--wide btn--lg"
              style="margin-bottom:8px;justify-content:space-between" data-o="${b.id}">
@@ -494,7 +494,7 @@ const Screens = {
     let qty = presetQty || 1;
     modal(`
       <div class="modal__head"><h3>${esc(p.name)}</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <label style="font-size:13px;color:var(--ink-2)">Adet</label>
         <div class="row" style="gap:8px;margin:8px 0 4px;flex-wrap:wrap">
@@ -514,7 +514,7 @@ const Screens = {
             .map(t => `<button class="btn btn--ghost btn--sm" data-t="${t}">${t}</button>`).join('')}
         </div>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="niOk">Adisyona ekle</button></div>`);
 
     const sum = () => { $('#niSum').value = tl(Number($('#niQty').value || 0) * Number(p.price || 0)) + ' ₺'; };
@@ -632,7 +632,7 @@ const Screens = {
     const sent = Number(it.sent_qty) > 0;
     modal(`
       <div class="modal__head"><h3>${esc(it.product_name)}</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="split-2">
           <div class="field"><label>Adet (yarım için 0,5)</label>
@@ -656,7 +656,7 @@ const Screens = {
       <div class="modal__foot">
         <button class="btn btn--danger" id="liCancel">İptal et</button>
         <div class="spacer"></div>
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="liSave">Kaydet</button>
       </div>`);
     $$('#modal .liq').forEach(b => b.onclick = () => { $('#liQty').value = b.dataset.q; });
@@ -702,7 +702,7 @@ const Screens = {
     const due = o.paid > 0 ? o.due : Number(o.grand_total);
     modal(`
       <div class="modal__head"><h3>Ödeme · Adisyon #${o.adisyon_no}</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="stat" style="margin-bottom:16px">
           <div class="stat__label">Kalan tutar</div>
@@ -733,24 +733,41 @@ const Screens = {
         : (Number($('#pyAmount').value || 0) + Number(b.dataset.cash)).toFixed(2);
     });
     /*
-     * Not even asked for while ÖKC is off. The server refuses the sale anyway
-     * (fiscal.beginSale), but a cashier must never see an "ÖKC ile öde" button
-     * that answers with an error - in front of a guest, at the moment of
-     * payment, is the worst place in this program to discover a switch.
+     * WHO TAKES THE MONEY.
+     *
+     * There used to be two payment paths side by side: the tender buttons,
+     * which recorded a payment locally and printed a hesap fisi, and a
+     * separate "OKC ile ode" button, which was the only way to reach the
+     * device - and which sent 'kredi_karti' no matter which tender the
+     * cashier had pressed. So a cash sale through the OKC was impossible, and
+     * a cash sale NOT through the OKC produced no fiscal document at all. In a
+     * business with an active yazarkasa that is every cash sale going
+     * unrecorded at the tax office.
+     *
+     * The rule now, and it is the owner's: while the OKC is active, EVERY
+     * payment goes through it. There is no local path to fall back to and no
+     * button that bypasses it. An owner who does not want that turns the OKC
+     * off in Ayarlar, which is a decision taken once by the owner rather than
+     * a choice a waiter makes per bill in front of a guest.
+     *
+     * Two of these buttons are not money and never reach the device:
+     *   ikram       - comped. Nothing is received, so there is nothing to
+     *                 charge and no receipt to cut.
+     *   acik_hesap  - not paid yet. The document belongs to the settlement,
+     *                 not to this moment.
+     *
+     * havale is the unresolved one. Money does arrive, but not at the till and
+     * not through the device, and PC Link has no tender that says so - CASH
+     * would put a wrong word on a tax document. So while the OKC is active it
+     * is refused out loud rather than quietly mislabelled.
      */
-    if (featureOn('okc')) api('GET', '/api/manage/fiscal/devices').then(r => {
-      if (!r.devices.length) return;
-      $('#pyOkc').innerHTML = `
-        <div class="alert alert--info" style="margin:0 0 10px">Yeni Nesil ÖKC bağlı: ${esc(r.devices[0].provider)}</div>
-        <button class="btn btn--primary btn--wide btn--lg" id="pyFiscal">ÖKC ile öde (mali fiş)</button>`;
-      $('#pyFiscal').onclick = () => this.fiscalPay(o, Number($('#pyAmount').value));
-    }).catch(() => {});
-    $$('#modal [data-m]').forEach(b => b.onclick = async () => {
+    const NON_PAYMENT = ['ikram', 'acik_hesap'];
+    const localPay = async (method) => {
       const amount = Number($('#pyAmount').value);
       try {
         const r = await api('POST', `/api/pos/orders/${o.id}/payments`, {
-          method: b.dataset.m, amount, print_bill: b.dataset.m !== 'acik_hesap',
-          open_drawer: b.dataset.m === 'nakit' });
+          method, amount, print_bill: method !== 'acik_hesap',
+          open_drawer: method === 'nakit' });
         if (r.change > 0) {
           $('#pyInfo').innerHTML = `<div class="alert alert--ok">Para üstü: <b>${tl(r.change)} ₺</b></div>`;
           setTimeout(() => { closeModal(); r.closed ? go('tables') : this.drawBill(); }, 1800);
@@ -760,35 +777,95 @@ const Screens = {
         }
         refreshHeader();
       } catch (e) { err(e); }
+    };
+
+    let okc = null;
+    const bind = () => $$('#modal [data-m]').forEach(b => b.onclick = () => {
+      const m = b.dataset.m;
+      if (!okc || NON_PAYMENT.includes(m)) return localPay(m);
+      if (m === 'havale') {
+        $('#pyInfo').innerHTML = '<div class="alert alert--warn">Yazarkasa açıkken havale '
+          + 'tahsilatı buradan alınamaz: cihazda bu ödeme türü yok ve mali fişe yanlış '
+          + 'yazılmasına izin verilmiyor.</div>';
+        return null;
+      }
+      return this.fiscalPay(o, Number($('#pyAmount').value), m);
     });
+    bind();
+
+    if (featureOn('okc')) api('GET', '/api/manage/fiscal/devices').then(r => {
+      /*
+       * Bound is not the same as allowed to trade: a device that is switched
+       * off, quarantined or never armed must not swallow the payment path.
+       */
+      okc = (r.devices || []).find(d => Number(d.is_active) === 1
+        && Number(d.production_enabled) === 1 && !d.quarantine_reason) || null;
+      if (!okc) return;
+      $('#pyOkc').innerHTML = `<div class="alert alert--info" style="margin:0">
+        Ödemeler <b>yazarkasaya</b> gidiyor — ${esc(okc.device_model || okc.provider)}.
+        Müşteri ödemeyi cihazda yapar, mali fiş cihazdan çıkar, adisyon kendiliğinden kapanır.</div>`;
+      bind();
+    }).catch(() => {});
   },
 
-  async fiscalPay(o, amount) {
+  async fiscalPay(o, amount, method = 'kredi_karti') {
     try {
-      const start = await api('POST', `/api/pos/orders/${o.id}/fiscal/pay`, { method: 'kredi_karti', amount });
+      const start = await api('POST', `/api/pos/orders/${o.id}/fiscal/pay`, { method, amount });
       modal(`
         <div class="modal__head"><h3>ÖKC bekleniyor</h3></div>
         <div class="modal__body" style="text-align:center;padding:36px 20px">
           <div class="stat__value" style="font-size:34px">${tl(amount)} ₺</div>
-          <p class="muted" id="fsState">Müşteri kartını cihaza okutsun...</p>
+          <p class="muted" id="fsState">${method === 'nakit'
+            ? 'Nakit alındı — cihaz mali fişi yazdırıyor…'
+            : method === 'yemek_karti'
+              ? 'Müşteri yemek kartını cihaza okutsun…'
+              : 'Müşteri kartını cihaza okutsun…'}</p>
           <button class="btn btn--ghost" id="fsCancel" style="margin-top:12px">İşlemi iptal et</button>
         </div>`);
+      /*
+       * WHY THIS BUTTON LOOKED DEAD.
+       *
+       * It used to `await` the cancel request and only close the dialog
+       * afterwards. Cancelling talks to the OKC, and the OKC is in the middle
+       * of a card flow - that round trip can take tens of seconds. So the
+       * cashier pressed it, nothing moved, nothing said anything, and they
+       * pressed it again. In front of a guest.
+       *
+       * Now it answers immediately, stops the poller, and reports what the
+       * device actually said. A cancel that FAILS is not hidden: the document
+       * may still be open on the OKC and somebody has to know that, so the
+       * dialog stays with the reason rather than closing on a lie.
+       */
+      let iv = null;
       $('#fsCancel').onclick = async () => {
-        try { await api('POST', `/api/pos/fiscal/transactions/${start.transactionId}/cancel`); } catch (_) {}
-        closeModal();
+        const b = $('#fsCancel');
+        b.disabled = true; b.textContent = 'İptal ediliyor…';
+        $('#fsState').textContent = 'Cihazdan iptal isteniyor, bekleyin…';
+        if (iv) { clearInterval(iv); iv = null; }
+        try {
+          await api('POST', `/api/pos/fiscal/transactions/${start.transactionId}/cancel`);
+          closeModal();
+          toast('İşlem iptal edildi', 'ok');
+          this.drawBill();
+        } catch (e) {
+          b.disabled = false; b.textContent = 'Tekrar dene';
+          $('#fsState').innerHTML = '<span style="color:var(--danger)">İptal edilemedi: '
+            + esc(e.message || 'cihaz yanıt vermedi')
+            + '<br>Cihaz ekranını kontrol edin.</span>';
+        }
       };
       const started = Date.now();
-      const iv = setInterval(async () => {
-        if (Date.now() - started > 200000) { clearInterval(iv); return; }
+      iv = setInterval(async () => {
+        if (Date.now() - started > 200000) { clearInterval(iv); iv = null; return; }
         try {
           const t = (await api('GET', `/api/pos/fiscal/transactions/${start.transactionId}`)).transaction;
           if (t.state === 'approved') {
-            clearInterval(iv); closeModal();
+            clearInterval(iv); iv = null; closeModal();
             toast('Mali fiş kesildi: ' + ((t.receipt && t.receipt.fiscal_receipt_no) || ''), 'ok');
             const cur = (await api('GET', `/api/pos/orders/${o.id}`)).order;
             cur.status === 'closed' ? go('tables') : this.drawBill();
           } else if (['declined', 'error', 'cancelled'].includes(t.state)) {
-            clearInterval(iv); closeModal();
+            clearInterval(iv); iv = null; closeModal();
             toast('ÖKC işlemi tamamlanmadı: ' + (t.error_message || t.state), 'error');
           }
         } catch (_) {}
@@ -800,7 +877,7 @@ const Screens = {
   moreDialog(o) {
     modal(`
       <div class="modal__head"><h3>Adisyon işlemleri</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="split-2" style="gap:10px">
           <button class="btn btn--ghost btn--lg" data-a="discount">Adisyona indirim</button>
@@ -837,7 +914,7 @@ const Screens = {
 
         modal(`
           <div class="modal__head"><h3>İndirim</h3><div class="spacer"></div>
-            <button class="close-x" onclick="closeModal()">✕</button></div>
+            <button class="close-x" data-close="1">✕</button></div>
           <div class="modal__body">
             <div class="dc-pick" id="dcPick">
               <button class="dc-opt is-active" data-t="bill">
@@ -859,7 +936,7 @@ const Screens = {
               <input class="input" id="dcWhy" placeholder="Sadık müşteri"></div>
             <div class="dc-sum" id="dcSum"></div>
           </div>
-          <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+          <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
             <button class="btn btn--primary" id="dcOk">Uygula</button></div>`);
 
         /* One number wins: typing in either box clears the other, so there is
@@ -939,7 +1016,7 @@ const Screens = {
               <input class="input" style="width:70px;height:34px" type="number" min="1" max="${Number(i.qty)}" value="${Number(i.qty)}" data-sq="${i.id}">
               <span class="mono">${tl(i.line_total)}</span></label>`).join('')}
           </div>
-          <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+          <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
             <button class="btn btn--primary" id="spOk">Böl</button></div>`);
         $('#spOk').onclick = async () => {
           const lines = $$('#modal [data-si]').filter(c => c.checked)
@@ -1084,7 +1161,7 @@ const Screens = {
   loyaltyDialog(order) {
     modal(`
       <div class="modal__head"><h3>Sadakat</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="field">
           <label>QR okutun veya telefon numarası yazın</label>
@@ -1123,7 +1200,7 @@ const Screens = {
   enrolDialog(order, phone) {
     modal(`
       <div class="modal__head"><h3>Yeni sadakat müşterisi</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="split-2">
           <div class="field"><label>Ad</label><input class="input" id="enF"></div>
@@ -1137,7 +1214,7 @@ const Screens = {
         <p class="muted" style="font-size:12px">Kayıt merkezi sistemde açılır; müşteri aynı kartı diğer NOKTApp
           işletmelerinde de kullanır. Bu adım için internet gerekir.</p>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="enOk">Kaydet ve damga ver</button></div>`);
     $('#enOk').onclick = async () => {
       try {
@@ -1157,7 +1234,7 @@ const Screens = {
     const r = await api('GET', `/api/pos/loyalty/customers/${customerId}/cards`);
     modal(`
       <div class="modal__head"><h3>${esc(name)}</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         ${r.cards.length ? r.cards.map(c => `
           <div class="card" style="margin-bottom:12px"><div class="card__body">
@@ -1326,10 +1403,21 @@ Object.assign(Screens, {
      * A manager with role 'admin' deliberately does not qualify.
      */
     const isOwner = !App.user || App.user.role === 'superadmin';
+    /*
+     * Reversing a payment is offered on the bill, where the cashier is looking
+     * when the guest asks for his money back - `POST /api/pos/payments/:id/void`
+     * existed with no caller anywhere in the application, so the only way to
+     * undo a payment was to delete the whole bill.
+     *
+     * For an ÖKC payment the server reverses it at the device first and refuses
+     * if the device will not, so this button cannot produce the split state
+     * where the till shows a refund and the card is still charged.
+     */
+    const canVoid = can('payment.void') || isOwner;
 
     modal(`
       <div class="modal__head"><h3>Adisyon #${o.adisyon_no}${o.bill_label ? ' · ' + esc(o.bill_label) : ''}</h3>
-        <div class="spacer"></div><button class="close-x" onclick="closeModal()">✕</button></div>
+        <div class="spacer"></div><button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="split-4" style="margin-bottom:14px">
           <div class="stat"><div class="stat__label">Masa</div><div class="stat__value" style="font-size:19px">${esc(o.table_name || 'Hızlı satış')}</div></div>
@@ -1354,8 +1442,11 @@ Object.assign(Screens, {
           ${Object.keys(vat).sort().map(k => `<tr><td class="muted">KDV %${k} (dahil)</td>
             <td class="right mono muted">${tl(vat[k])} ₺</td></tr>`).join('')}
           <tr><td><b>Genel toplam</b></td><td class="right mono"><b>${tl(o.grand_total)} ₺</b></td></tr>
-          ${(o.payments || []).map(p => `<tr><td class="muted">${esc(p.method)}</td>
-            <td class="right mono muted">${tl(p.amount)} ₺</td></tr>`).join('')}
+          ${(o.payments || []).map(p => `<tr><td class="muted">${esc(label(p.method))}
+            ${p.fiscal_transaction_id ? '<span class="badge">ÖKC</span>' : ''}</td>
+            <td class="right mono muted">${tl(p.amount)} ₺
+            ${canVoid ? `<button class="btn btn--ghost btn--sm" data-void="${p.id}"
+              style="margin-left:8px">Geri al</button>` : ''}</td></tr>`).join('')}
         </tbody></table>
       </div>
       <div class="modal__foot" style="flex-wrap:wrap;gap:8px">
@@ -1370,6 +1461,31 @@ Object.assign(Screens, {
       try { await api('POST', `/api/pos/orders/${o.id}/print`); toast('Fiş yazıcıya gönderildi', 'ok'); }
       catch (e) { err(e); }
     };
+    for (const b of $$('[data-void]')) {
+      b.onclick = async () => {
+        const pid = b.getAttribute('data-void');
+        const pay = (o.payments || []).find(x => String(x.id) === String(pid)) || {};
+        const fiscal = !!pay.fiscal_transaction_id;
+        const okGo = await confirmBox('Ödemeyi geri al', fiscal
+          ? `${tl(pay.amount)} ₺ yazarkasa üzerinden geri alınacak. Cihaz iptal mi iade mi `
+            + 'yapacağını kendisi belirler ve kâğıdı basar. Devam edilsin mi?'
+          : `${tl(pay.amount)} ₺ ödeme kaydı silinecek. Parayı kasadan siz vereceksiniz. Devam edilsin mi?`,
+          true);
+        if (!okGo) return;
+        const reason = await this.askText('Gerekçe', 'Örn: müşteri iade istedi');
+        if (!reason) return;
+        b.disabled = true; b.textContent = '…';
+        try {
+          const r = await api('POST', `/api/pos/payments/${pid}/void`, { reason });
+          closeModal();
+          const rv = r.reversal;
+          toast(rv && rv.state === 'voided' ? 'Yazarkasa işlemi iptal edildi.'
+            : rv && rv.state === 'refunded' ? 'Yazarkasa iadesi yapıldı, iade fişi basıldı.'
+            : 'Ödeme geri alındı.', 'ok');
+          this.page_bills ? this.page_bills() : refreshHeader();
+        } catch (e) { b.disabled = false; b.textContent = 'Geri al'; err(e); }
+      };
+    }
     $('#bdMail').onclick = async () => {
       const to = await this.askText('E-posta adresi', 'misafir@ornek.com');
       if (!to) return;
@@ -1417,6 +1533,19 @@ Object.assign(Screens, {
         <div class="card__head"><h3>Z raporu (bugün)</h3><div class="spacer"></div>
           <button class="btn btn--ghost btn--sm" id="rpPrintZ">Yazdır</button></div>
         <div class="card__body" id="rpZ"></div>
+      </div>
+      <div class="card" style="margin-top:14px" id="rpOkcCard" hidden>
+        <div class="card__head"><h3>ÖKC (yazarkasa) raporları</h3><div class="spacer"></div>
+          <button class="btn btn--ghost btn--sm" id="rpOkcX">ÖKC X raporu</button>
+          <button class="btn btn--ghost btn--sm" id="rpOkcZ">ÖKC Z (mali gün sonu)</button></div>
+        <div class="card__body">
+          <div class="alert alert--info" style="margin-bottom:10px">
+            Bu iki rapor <b>cihazdan</b> alınır ve cihazın kendi kâğıdına basılır.
+            Yukarıdaki X/Z ise NOKTApp'in kendi satış raporudur — ikisi farklı belgelerdir.
+            <b>ÖKC Z mali günü kapatır ve geri alınamaz.</b>
+          </div>
+          <div id="rpOkcOut"></div>
+        </div>
       </div>
       <div class="card" style="margin-top:14px">
         <div class="card__head"><h3>Dönem raporları</h3><div class="spacer"></div>
@@ -1473,6 +1602,7 @@ Object.assign(Screens, {
       $('#rpPrintZ').onclick = async () => { await api('POST', '/api/reports/z/print', { kind: 'Z' }); toast('Z raporu yazdırıldı', 'ok'); };
       $('#rpX').onclick = async () => { await api('POST', '/api/reports/z/print', { kind: 'X' }); toast('X raporu yazdırıldı', 'ok'); };
       $('#rpClose').onclick = () => this.closeDayDialog(z);
+      this.okcReportsPanel();
       const run = async () => {
         const q = `from=${$('#rpFrom').value}&to=${$('#rpTo').value}`;
         const r = await api('GET', `/api/reports/${$('#rpKind').value}?${q}`);
@@ -1503,29 +1633,172 @@ Object.assign(Screens, {
     } catch (e) { err(e); }
   },
 
+  /**
+   * The ÖKC half of the Gün sonu screen.
+   *
+   * `POST /api/pos/fiscal/report` was written, tested and reachable by nothing:
+   * there was no button in the whole application that took an X or a Z on the
+   * device. An owner who wanted either had to walk to the ÖKC and use its own
+   * menu, which is exactly the manual step the integration exists to remove.
+   *
+   * The card hides itself when there is no armed device, because a till with no
+   * ÖKC must not be shown two buttons that can only ever produce an error.
+   */
+  async okcReportsPanel() {
+    let resp = null;
+    try {
+      resp = await api('GET', '/api/pos/fiscal/reports');
+    } catch (e) {
+      /* 403 = this user may not close the day. The card stays hidden rather
+         than showing a panel whose buttons will be refused. */
+      return;
+    }
+    let rows = resp.rows || [];
+    const card = $('#rpOkcCard');
+    if (!card) return;
+    /*
+     * No device, no card. "The request succeeded" does not mean there is an
+     * ÖKC - it means this user may close the day - so the server says outright
+     * whether a device is there and that is what decides.
+     */
+    if (!resp.device) return;
+    card.hidden = false;
+    const notice = resp.device.armed ? '' :
+      `<div class="alert alert--warn" style="margin-bottom:10px">Cihaz
+        (${esc(resp.device.serial_number || resp.device.provider)})
+        ${resp.device.quarantined ? 'karantinada' : 'üretime açılmamış'} — rapor alınamaz.
+        Ayarlar &gt; ÖKC ekranından düzeltin.</div>`;
+    /* A device that cannot print must not be asked to. */
+    if (!resp.device.armed) {
+      $('#rpOkcX').disabled = true;
+      $('#rpOkcZ').disabled = true;
+    }
+
+    const draw = () => {
+      $('#rpOkcOut').innerHTML = notice + (rows.length
+        ? `<table class="tbl"><thead><tr><th>Rapor</th><th>Z no</th><th>Cihaz saati</th><th>Alındı</th></tr></thead>
+           <tbody>${rows.map(r => `<tr>
+             <td><b>${esc(r.report_type)}</b></td>
+             <td class="mono">${esc(r.z_number || '—')}</td>
+             <td class="mono">${esc(r.device_time || '—')}</td>
+             <td class="mono">${esc(String(r.created_at || '').replace('T', ' ').slice(0, 19))}</td></tr>`).join('')}
+           </tbody></table>`
+        : '<div class="empty">Bu cihazdan henüz X veya Z raporu alınmamış.</div>');
+    };
+    draw();
+
+    const take = async (kind, btn) => {
+      btn.disabled = true;
+      const was = btn.textContent;
+      btn.textContent = 'Cihaza gönderiliyor…';
+      try {
+        const r = await api('POST', '/api/pos/fiscal/report', { kind });
+        toast(kind === 'Z'
+          ? 'ÖKC Z raporu alındı, mali gün kapandı.'
+          : 'ÖKC X raporu alındı.', 'ok');
+        /* The device printed it. If our own record failed, say so - the paper in
+           his hand is then the only copy. */
+        if (r.recorded === false) {
+          $('#rpOkcOut').innerHTML = `<div class="alert alert--warn">Rapor cihazdan alındı ama
+            NOKTApp kaydına yazılamadı: ${esc(r.recordError || '')} — cihazdan çıkan kâğıdı saklayın.</div>`
+            + $('#rpOkcOut').innerHTML;
+        }
+        rows = (await api('GET', '/api/pos/fiscal/reports')).rows || [];
+        draw();
+      } catch (e) {
+        $('#rpOkcOut').innerHTML = `<div class="alert alert--error">${esc(e.message)}</div>`
+          + $('#rpOkcOut').innerHTML;
+      } finally { btn.disabled = false; btn.textContent = was; }
+    };
+
+    $('#rpOkcX').onclick = (e) => take('X', e.currentTarget);
+    $('#rpOkcZ').onclick = async (e) => {
+      const btn = e.currentTarget;
+      if (!await confirmBox('ÖKC Z raporu',
+        'Cihazın mali günü kapanacak ve bu geri alınamaz. Devam edilsin mi?', true)) return;
+      await take('Z', btn);
+    };
+  },
+
+  /**
+   * Gün sonu.
+   *
+   * Two days end here and they are not the same day. NOKTApp's own business day
+   * is a row in our database and can be reopened; the ÖKC's fiscal day is
+   * closed by a Z report on the device and cannot. The server now takes the
+   * device's Z FIRST and refuses the whole close if it fails - so this dialog
+   * has to be able to say which of the two happened, and to offer the one
+   * escape hatch that exists.
+   *
+   * That escape hatch is deliberately ugly: a separate, red, second press with
+   * a typed reason, which the server writes to audit_logs as
+   * fiscal.z_skipped. Closing the till's day while the device's fiscal day
+   * stays open is sometimes the only way to keep trading tomorrow morning with
+   * a dead ÖKC - and it is always something an owner must be able to find
+   * afterwards.
+   */
   closeDayDialog(z) {
     modal(`
       <div class="modal__head"><h3>Gün sonu</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
-        <div class="alert alert--info">Gün sonu alındıktan sonra o güne yeni adisyon açılamaz ve kapanan adisyonlar geri açılamaz.</div>
+        <div class="alert alert--info">Gün sonu alındıktan sonra o güne yeni adisyon açılamaz ve kapanan adisyonlar geri açılamaz.
+          Yazarkasa bağlıysa <b>önce cihazın Z raporu</b> alınır; cihaz cevap vermezse gün kapatılmaz.</div>
         <div class="split-2">
           <div class="field"><label>Sayılan nakit</label><input class="input" id="cdCash" type="number" step="0.01"
             value="${(z.payments.find(p => p.method === 'nakit') || { total: 0 }).total.toFixed(2)}"></div>
           <div class="field"><label>Kart toplamı (POS ekstresi)</label><input class="input" id="cdCard" type="number" step="0.01"
             value="${z.payments.filter(p => p.method !== 'nakit').reduce((a, p) => a + p.total, 0).toFixed(2)}"></div>
         </div>
+        <div id="cdAlert"></div>
+        <div id="cdSkip" hidden>
+          <div class="field"><label>ÖKC olmadan kapatma gerekçesi (zorunlu)</label>
+            <input class="input" id="cdReason" maxlength="190"
+              placeholder="Örn: cihaz açılmıyor, servis çağrıldı"></div>
+        </div>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
+        <button class="btn btn--danger" id="cdSkipOk" hidden>ÖKC olmadan kapat</button>
         <button class="btn btn--dark" id="cdOk">Gün sonunu al</button></div>`);
-    $('#cdOk').onclick = async () => {
+
+    const send = async (body, btn) => {
+      const was = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Kapatılıyor…';
       try {
         const r = await api('POST', '/api/reports/close-day', {
-          declared_cash: Number($('#cdCash').value), declared_card: Number($('#cdCard').value) });
+          declared_cash: Number($('#cdCash').value),
+          declared_card: Number($('#cdCard').value), ...body });
         closeModal();
-        toast('Gün sonu alındı. Kasa farkı: ' + tl(Number($('#cdCash').value) - r.report.expected_cash) + ' ₺', 'ok');
+        const fark = tl(Number($('#cdCash').value) - r.report.expected_cash);
+        let extra = '';
+        if (r.fiscal && r.fiscal.taken) extra = ' ÖKC Z raporu alındı.';
+        else if (r.fiscal && r.fiscal.skipped) extra = ' ÖKC Z raporu ALINMADI — kayda geçti.';
+        toast('Gün sonu alındı. Kasa farkı: ' + fark + ' ₺.' + extra, 'ok');
         refreshHeader(); this.page_reports();
-      } catch (e) { err(e); }
+      } catch (e) {
+        btn.disabled = false; btn.textContent = was;
+        $('#cdAlert').innerHTML = `<div class="alert alert--error">${esc(e.message)}</div>`;
+        /*
+         * FISCAL_Z_FAILED is the one refusal with a second path. Anything else
+         * is a plain error and must not grow a button that skips the device.
+         */
+        if (e.code === 'FISCAL_Z_FAILED') {
+          $('#cdSkip').hidden = false;
+          $('#cdSkipOk').hidden = false;
+          $('#cdOk').textContent = 'Tekrar dene';
+        }
+      }
+    };
+
+    $('#cdOk').onclick = (e) => send({}, e.currentTarget);
+    $('#cdSkipOk').onclick = (e) => {
+      const reason = String($('#cdReason').value || '').trim();
+      if (reason.length < 5) {
+        $('#cdAlert').innerHTML = '<div class="alert alert--error">Gerekçe yazmadan ÖKC olmadan kapatılamaz.</div>';
+        $('#cdReason').focus();
+        return;
+      }
+      send({ skip_fiscal: true, skip_reason: reason }, e.currentTarget);
     };
   },
 
@@ -1764,7 +2037,7 @@ Object.assign(Screens, {
       this.download(`/api/reports/export/pnl-products?from=${from}&to=${to}&format=pdf`, e.currentTarget);
     if ($('#plUncosted')) $('#plUncosted').onclick = () => modal(`
       <div class="modal__head"><h3>Maliyeti girilmemiş ürünler</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <p class="muted" style="margin-top:0">Bu ürünlere Ürünler ekranından maliyet girin;
            kâr rakamı ancak ondan sonra doğru olur.</p>
@@ -1827,7 +2100,7 @@ Object.assign(Screens, {
     const draw = () => {
       modal(`
         <div class="modal__head"><h3>Menüyü içe / dışa aktar</h3><div class="spacer"></div>
-          <button class="close-x" onclick="closeModal()">✕</button></div>
+          <button class="close-x" data-close="1">✕</button></div>
         <div class="modal__body">
           <div class="row" style="gap:8px;margin-bottom:14px">
             <button class="btn ${kind === 'products' ? 'btn--dark' : 'btn--ghost'} btn--sm" data-k="products">Ürünler</button>
@@ -1946,7 +2219,7 @@ Object.assign(Screens, {
         <div class="modal__body"><p style="margin:0">Ürün eklemeden önce en az bir kategori
           oluşturmanız gerekiyor. Kategori, ürünün kasada nerede duracağını ve
           mutfakta hangi istasyona basılacağını belirler.</p></div>
-        <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
           <button class="btn btn--primary" id="pfGoCat">Kategori ekle</button></div>`);
     }
     const stName = (id) => {
@@ -1963,7 +2236,7 @@ Object.assign(Screens, {
       <div class="modal__head"><h3>${p.id ? 'Ürünü düzenle' : 'Yeni ürün'}</h3>
         ${p.id ? `<span class="badge badge--gray">#${p.id}</span>` : ''}
         <div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div id="pfErr"></div>
         <div class="split-2" style="gap:22px;align-items:start">
@@ -2018,7 +2291,7 @@ Object.assign(Screens, {
           </div>
         </div>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="pfOk">Kaydet</button></div>`, { wide: true });
 
     if ($('#pfGoCat')) { $('#pfGoCat').onclick = () => { closeModal(); this.categoryForm(); }; return; }
@@ -2103,7 +2376,7 @@ Object.assign(Screens, {
     const st = (await api('GET', '/api/pos/stations')).stations;
     modal(`
       <div class="modal__head"><h3>${c.id ? 'Kategoriyi düzenle' : 'Yeni kategori'}</h3>
-        <div class="spacer"></div><button class="close-x" onclick="closeModal()">✕</button></div>
+        <div class="spacer"></div><button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div id="cfErr"></div>
         <div class="field"><label>Kategori adı</label>
@@ -2133,7 +2406,7 @@ Object.assign(Screens, {
             <span><b>QR menüde göster</b><i>Misafirin telefonundaki menüde</i></span></label>
         </div>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="cfOk">Kaydet</button></div>`);
     setTimeout(() => { const el = $('#cfName'); if (el) el.focus(); }, 60);
 
@@ -2200,7 +2473,7 @@ Object.assign(Screens, {
           <div class="field"><label>Telefon</label><input class="input" id="cuP"></div>
           <div class="field"><label>E-posta</label><input class="input" id="cuE"></div>
         </div></div>
-        <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
           <button class="btn btn--primary" id="cuOk">Kaydet</button></div>`);
       $('#cuOk').onclick = async () => {
         try {
@@ -2222,7 +2495,7 @@ Object.assign(Screens, {
           <div class="field"><label>Masa</label><select class="input" id="rsTable">
             <option value="">Belirtilmedi</option>
             ${t.tables.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></div></div>
-          <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+          <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
             <button class="btn btn--primary" id="rsOk">Kaydet</button></div>`);
         $('#rsOk').onclick = async () => {
           try {

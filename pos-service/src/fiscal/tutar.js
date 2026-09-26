@@ -38,6 +38,34 @@ function minor(v, field = 'amount') {
 function str(b) { return b.toString(); }
 
 /**
+ * A decimal amount as it comes out of the database -> minor-unit string.
+ *
+ * The till stores money as DECIMAL(10,2) and the driver hands it back as
+ * "320.00" or 320. Everything in this module wants "32000". The obvious
+ * conversion is Math.round(Number(v) * 100), which is what util/http.minor
+ * does - and it is float arithmetic, which is exactly what this file exists
+ * to keep away from a fiscal document. So the digits are moved by string
+ * surgery and the result is built with BigInt; no Number is involved.
+ *
+ * More fraction digits than the scale is refused, not rounded. Silently
+ * dropping a digit off a price is how a receipt stops matching the bill.
+ */
+function minorFromDecimal(v, field = 'amount', scale = 2) {
+  const sv = (typeof v === 'string' ? v : String(v === null || v === undefined ? '' : v)).trim();
+  if (!isDecimal(sv)) {
+    throw bad(`${field}: ondalik tutar metni bekleniyor, gelen: ${JSON.stringify(v)}`);
+  }
+  const neg = sv.startsWith('-');
+  const [whole, frac = ''] = sv.replace('-', '').split('.');
+  if (frac.length > scale) {
+    throw bad(`${field}: ${scale} haneden fazla kurus basamagi var (${sv}); `
+      + 'yuvarlamak yerine reddediliyor.');
+  }
+  const out = BigInt(whole + (frac + '0'.repeat(scale)).slice(0, scale));
+  return str(neg ? -out : out);
+}
+
+/**
  * Decimal string x minor-unit price -> minor units, half-up, exact.
  *
  * Done entirely in BigInt: the decimal is scaled to an integer, multiplied,
@@ -89,6 +117,6 @@ function assertCurrency(c, field = 'currency') {
 }
 
 module.exports = {
-  CURRENCY, isMinor, isDecimal, minor, str,
+  CURRENCY, isMinor, isDecimal, minor, str, minorFromDecimal,
   mulDecimal, add, sub, cmp, isNegative, isZero, human, assertCurrency, bad,
 };

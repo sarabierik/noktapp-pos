@@ -37,6 +37,15 @@ class FiscalAdapter {
 
   /** Ask the device to take its X or Z report. */
   async report(kind) { throw new Error('report() not implemented'); }
+
+  /**
+   * Lines this protocol accepts on one receipt, or null if it does not say.
+   *
+   * null is a real answer and not a missing one: it means the orchestrator must
+   * NOT refuse a basket up front on a number nobody published. Returning a
+   * plausible figure here would put a made-up limit in front of real sales.
+   */
+  get maxSaleLines() { return null; }
 }
 
 /*

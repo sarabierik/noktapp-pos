@@ -19,6 +19,20 @@ const db = require('../db');
 const log = require('../logger');
 const payments = require('../modules/payments');
 const { minor, money } = require('../util/http');
+/*
+ * Two different minor() functions exist in this codebase and they are not
+ * interchangeable. util/http.minor is Math.round(Number(v) * 100) - a float
+ * multiply - and it returns a NUMBER. fiscal/tutar.js is BigInt throughout and
+ * speaks in minor-unit STRINGS, because a till that adds a few hundred lines a
+ * night will otherwise eventually disagree with the fiscal device by a kurus.
+ *
+ * The sale object handed to an adapter is a fiscal boundary, so it uses the
+ * exact one. Building it with the float helper is what made a real HUGIN S1
+ * refuse the first basket it was ever sent:
+ *   "line.unitPrice: minor-unit integer string bekleniyor, gelen: 32000"
+ * - the value was right, the type was not.
+ */
+const para = require('./tutar');
 const { SimulatorAdapter } = require('./adapters/simulator');
 const brands = require('./adapters/brands');
 const engelli = require('./adapters/engelli');
@@ -121,21 +135,32 @@ async function saveDevice(clientId, data) {
   if (data.id) {
     await db.exec(
       `UPDATE fiscal_devices SET cash_register_id=?, provider=?, device_model=?, serial_number=?,
-          connection_type=?, device_ip=?, device_port=?, merchant_id=?, terminal_id=?,
+          connection_type=?, device_ip=?, device_port=?, serial_port=?, merchant_id=?, terminal_id=?,
+          pclink_software_id=COALESCE(NULLIF(?, ''), pclink_software_id),
           environment=?, is_active=?, updated_at=NOW() WHERE id=? AND client_id=?`,
       [data.cash_register_id || null, data.provider, data.device_model || null, data.serial_number || '',
        data.connection_type || 'tcp', data.device_ip || null, data.device_port || null,
-       data.merchant_id || null, data.terminal_id || null, data.environment || 'production',
+       data.serial_port || null,
+       data.merchant_id || null, data.terminal_id || null,
+       /* COALESCE above: an empty box on the edit form must not wipe a VKN the
+          pairing step already recorded. */
+       data.pclink_software_id || '',
+       data.environment || 'production',
        data.is_active === false ? 0 : 1, data.id, clientId]);
     return data.id;
   }
   return db.insert(
+    /* serial_port has existed as a column since the Ingenico migration and was
+       never written by anything, because every adapter spoke TCP. A serial
+       terminal that cannot record its COM port is a device nobody can reach. */
     `INSERT INTO fiscal_devices (client_id, branch_id, cash_register_id, provider, device_model, serial_number,
-        connection_type, device_ip, device_port, merchant_id, terminal_id, environment, status, is_active, created_at, updated_at)
-     VALUES (?,1,?,?,?,?,?,?,?,?,?,?, 'unknown', 1, NOW(), NOW())`,
+        connection_type, device_ip, device_port, serial_port, merchant_id, terminal_id,
+        pclink_software_id, environment, status, is_active, created_at, updated_at)
+     VALUES (?,1,?,?,?,?,?,?,?,?,?,?,?,?, 'unknown', 1, NOW(), NOW())`,
     [clientId, data.cash_register_id || null, data.provider, data.device_model || null, data.serial_number || '',
-     data.connection_type || 'tcp', data.device_ip || null, data.device_port || null,
-     data.merchant_id || null, data.terminal_id || null, data.environment || 'production']);
+     data.connection_type || 'tcp', data.device_ip || null, data.device_port || null, data.serial_port || null,
+     data.merchant_id || null, data.terminal_id || null,
+     data.pclink_software_id || null, data.environment || 'production']);
 }
 
 /**
@@ -214,6 +239,35 @@ async function releaseLock(clientId, orderId) {
   await db.exec('DELETE FROM order_payment_locks WHERE client_id=? AND order_id=?', [clientId, orderId]);
 }
 
+/**
+ * How many lines this device accepts on one receipt, or null for "nobody knows".
+ *
+ * Two sources only, and neither of them is a constant in this file:
+ *
+ *   1. the number an operator typed on the device card. An explicit answer from
+ *      the person holding the ÖKC manual beats everything else.
+ *   2. what the adapter documents for its own protocol. GMP-3 states 40; the
+ *      PC Link reference does not state a figure, so its adapter declares null.
+ *
+ * null means no pre-flight refusal. That is deliberate: the alternative was
+ * applying Ingenico's 40 to a HUGIN and refusing a 45-line Saturday bill the
+ * device might have printed. A basket the device does refuse now cancels its own
+ * open document, so being wrong in this direction costs one clear error message
+ * instead of a stuck till.
+ *
+ * What is NOT done here: reading a limit out of the device's settings snapshot
+ * by guessing which key holds it. The snapshot is stored verbatim and shown to
+ * the operator; a cap read from a property we matched by name could silently be
+ * the wrong number, and a wrong cap refuses real sales.
+ */
+function lineLimit(device, adapter) {
+  const stored = device.max_sale_lines === null || device.max_sale_lines === undefined
+    || device.max_sale_lines === '' ? null : Number(device.max_sale_lines);
+  if (stored > 0) return stored;
+  const declared = adapter && Number(adapter.maxSaleLines);
+  return declared > 0 ? declared : null;
+}
+
 /* ------------------------------ sale ------------------------------ */
 async function beginSale(clientId, orderId, { method, amount, installments = 0, userId, cashRegisterId = null, deviceId = null }) {
   await requireEnabled(clientId);
@@ -260,24 +314,43 @@ async function beginSale(clientId, orderId, { method, amount, installments = 0, 
       items: order.items.map(i => {
         const dep = base.resolveDepartment(i.vat_rate, tables);
         return {
-          name: i.product_name, qty: Number(i.qty),
-          unitPriceMinor: minor(i.unit_price), vatRate: Number(i.vat_rate || 0),
+          name: i.product_name,
+          /* a decimal STRING, so 1.50 kg stays 1.50 and never becomes 1.5e0 */
+          qty: para.isDecimal(String(i.qty)) ? String(i.qty) : String(Number(i.qty)),
+          unitPriceMinor: para.minorFromDecimal(i.unit_price, 'item.unitPrice'),
+          vatRate: Number(i.vat_rate || 0),
           /* the index the DEVICE counts from, and the unit it knows */
           department: dep.okc_index, departmentName: dep.name, vatCode: dep.vat_code,
           unit: base.unitFor(i.unit),
         };
       }),
-      totalMinor: minor(amt),
-      discountMinor: minor(order.discount_total),
-      payment: { method, amountMinor: minor(amt), installments },
+      totalMinor: para.minorFromDecimal(amt, 'sale.total'),
+      discountMinor: para.minorFromDecimal(order.discount_total || 0, 'sale.discount'),
+      payment: { method, amountMinor: para.minorFromDecimal(amt, 'payment.amount'), installments },
     };
     /*
      * The device's own limits, checked here rather than discovered by the
      * device refusing mid-sale with the guest standing at the counter. Both
      * numbers come off the ÖKC settings screen and are per-device.
+     *
+     * WHERE THE LINE LIMIT COMES FROM, and why it is not a constant.
+     *
+     * 40 was the Ingenico GMP-3 figure and it was applied to every brand,
+     * including HUGIN PC Link, whose reference does not state that number. So a
+     * 45-line bill - one big table on a Saturday - was refused by the till for
+     * a device that may well have accepted it, and the cashier was told to
+     * split a bill that did not need splitting.
+     *
+     * The order of trust is: what the operator entered on the device card, then
+     * what the device itself reported in its settings snapshot, then what the
+     * adapter documents for its own protocol. If none of the three knows, no
+     * cap is imposed here - the device answers for itself and a failed basket
+     * now cancels its own document. An invented limit that refuses valid sales
+     * is worse than no limit at all.
      */
-    if (sale.items.length > Number(device.max_sale_lines || 40)) {
-      const e = new Error(`OKC tek fiste en fazla ${device.max_sale_lines || 40} satir kabul ediyor `
+    const lineCap = lineLimit(device, adapter);
+    if (lineCap && sale.items.length > lineCap) {
+      const e = new Error(`OKC tek fiste en fazla ${lineCap} satir kabul ediyor `
         + `(bu adisyonda ${sale.items.length} satir var). Adisyonu bolun.`);
       e.status = 400; throw e;
     }
@@ -286,12 +359,61 @@ async function beginSale(clientId, orderId, { method, amount, installments = 0, 
         + (Number(device.receipt_limit_minor || 1200000) / 100).toFixed(2) + ' TL). Odemeyi bolun.');
       e.status = 400; throw e;
     }
+    /*
+     * BUILD THE PAYLOAD BEFORE OPENING ANYTHING ON THE DEVICE.
+     *
+     * startSale opens a document on the OKC. If the basket then fails to
+     * build - a bad price, a name the device will not take - the document is
+     * already open and we have no way to close it: cancelSale throws
+     * ENDPOINT_UNDOCUMENTED, because Hugin's cancel endpoint is in the Postman
+     * reference behind the integration agreement. The device then refuses
+     * every later sale with "uygun durumda degil" until somebody restarts it.
+     * In an office that is an annoyance; in a restaurant it is a dead till
+     * with a queue at the counter.
+     *
+     * Building the payload costs nothing and needs no device, so it happens
+     * first. A basket that cannot be built now fails before the OKC has been
+     * touched at all.
+     */
+    if (typeof adapter.buildSalePayload === 'function') {
+      adapter.buildSalePayload(sale);
+    }
+
     const started = await adapter.startSale(sale);
     await db.exec(
       "UPDATE fiscal_transactions SET state='waiting_device', provider_session_id=?, state_changed_at=NOW(), attempt_count=attempt_count+1 WHERE id=?",
       [started.providerSessionId, txId]);
     await event(clientId, txId, 'waiting_device', started.raw || {});
-    poll(clientId, txId).catch(e => log.error('fiscal', 'poll crashed', e.message));
+
+    /*
+     * WHICH SHAPE IS THIS DEVICE'S SALE?
+     *
+     * Two genuinely different conversations hide behind one startSale():
+     *
+     *   poll              start the sale and the TERMINAL runs it - the guest
+     *                     taps, the terminal decides - so we ask it, over and
+     *                     over, whether it has finished. Ingenico / GMP-3.
+     *
+     *   request_response  we send the basket and the payment in one call and
+     *                     that call returns the result. Hugin PC Link.
+     *
+     * The orchestrator only ever knew the first one. Against a real HUGIN S1
+     * that meant: the document opened, the poll loop started, pollSale threw
+     * POLL_NOT_APPLICABLE (correctly - PC Link has no poll), the catch below
+     * swallowed it and `continue`d, and the till span for three minutes while
+     * finishSale - the call that actually carries the basket - was never made
+     * by anything. The device sat holding an empty open document.
+     *
+     * Only hardware could show this: the simulator answers polls, so every
+     * suite was green on a path the Hugin adapter does not use.
+     */
+    const shape = adapter.saleShape || 'poll';
+    if (shape === 'request_response') {
+      finishNow(clientId, txId, sale)
+        .catch(e => log.error('fiscal', 'finish crashed', e.message));
+    } else {
+      poll(clientId, txId).catch(e => log.error('fiscal', 'poll crashed', e.message));
+    }
     return { transactionId: txId, state: 'waiting_device', lock };
   } catch (err) {
     await db.exec("UPDATE fiscal_transactions SET state='error', error_code=?, error_message=?, finished_at=NOW(), state_changed_at=NOW() WHERE id=?",
@@ -311,6 +433,69 @@ async function event(clientId, txId, toState, detail, fromState = null) {
   } catch (e) { log.debug('fiscal', 'event insert failed', e.message); }
 }
 
+/**
+ * The request/response sale: one call carries the basket and the payment, and
+ * its answer IS the result. Run detached so the HTTP request that started the
+ * sale returns straight away - the till's dialog already follows the
+ * transaction row, and a cashier holding a spinner for three minutes with no
+ * cancel button is worse than one watching a device.
+ */
+async function finishNow(clientId, txId, sale) {
+  const tx = await db.one('SELECT * FROM fiscal_transactions WHERE id=? AND client_id=?', [txId, clientId]);
+  if (!tx) return;
+  const device = await db.one('SELECT * FROM fiscal_devices WHERE id=?', [tx.fiscal_device_id]);
+  const adapter = adapterFor(device);
+  let res;
+  try {
+    res = await adapter.finishSale(tx.provider_session_id, sale);
+  } catch (e) {
+    /*
+     * A thrown finishSale is the sale failing, and it is reported as such.
+     * The old poll loop logged its errors and carried on, which is how a
+     * dead conversation looked like a slow one for three minutes.
+     *
+     * AND THEN CLEAN UP AFTER OURSELVES. startSale left a document OPEN on
+     * the device; if it stays open the OKC refuses every later sale with
+     * ERR_INVALID_STATE and the only cure was a restart - a dead till with a
+     * queue at the counter. Now that the cancel endpoint is wired, a failed
+     * sale closes its own document.
+     *
+     * Best effort on purpose: if the cancel itself fails the sale is still
+     * reported as failed, with the cancel's own reason attached so the
+     * cashier is told the device needs attention rather than silently
+     * inheriting a stuck one.
+     */
+    let cleanup = null;
+    if (typeof adapter.cancelSale === 'function' && tx.provider_session_id) {
+      try {
+        await adapter.cancelSale(tx.provider_session_id);
+        cleanup = 'belge iptal edildi';
+      } catch (ce) {
+        cleanup = `belge iptal EDILEMEDI (${ce.code || 'HATA'}) - cihazi kontrol edin`;
+        log.warn('fiscal', 'open document could not be cancelled',
+          { tx: tx.id, doc: tx.provider_session_id, err: ce.message });
+      }
+    }
+    return refuse(clientId, tx, {
+      state: 'error',
+      error: {
+        code: e.code || 'FINISH_FAILED',
+        message: cleanup ? `${e.message} [${cleanup}]` : e.message,
+      },
+    });
+  }
+  if (res.state === 'approved') return approve(clientId, tx, res);
+  if (res.state === 'waiting_device') {
+    /* The device answered but is not done - the only honest thing we can do
+       without a poll endpoint is say so rather than hang. */
+    return refuse(clientId, tx, { state: 'error', raw: res.raw, error: {
+      code: 'DEVICE_NOT_FINISHED',
+      message: 'Cihaz islemi tamamlamadi ve PC Link yoklama ucu yok. '
+             + 'Cihaz ekranini kontrol edin.' } });
+  }
+  return refuse(clientId, tx, res);
+}
+
 /** Follow the device until it answers, then finish the payment. */
 async function poll(clientId, txId) {
   const tx = await db.one('SELECT * FROM fiscal_transactions WHERE id=? AND client_id=?', [txId, clientId]);
@@ -322,7 +507,19 @@ async function poll(clientId, txId) {
     await new Promise(r => setTimeout(r, 1200));
     let res;
     try { res = await adapter.pollSale(tx.provider_session_id); }
-    catch (e) { log.warn('fiscal', 'poll error', e.message); continue; }
+    catch (e) {
+      /*
+       * An adapter saying "I do not poll" is not a transient error to retry
+       * 150 times - it is a wiring mistake, and retrying hides it behind a
+       * three-minute timeout. Stop and say which adapter and why.
+       */
+      if (e.code === 'POLL_NOT_APPLICABLE') {
+        return refuse(clientId, tx, { state: 'error', error: { code: e.code,
+          message: `${device.provider}: ${e.message}` } });
+      }
+      log.warn('fiscal', 'poll error', e.message);
+      continue;
+    }
     if (res.state === 'waiting_device') continue;
     if (res.state === 'approved') return approve(clientId, tx, res);
     return refuse(clientId, tx, res);
@@ -334,11 +531,23 @@ async function approve(clientId, tx, res) {
   const r = res.receipt || {};
   await db.tx(async t => {
     await t.exec(
+      /*
+       * bank_id, bank_reference_no and pos_transaction_id are written HERE or
+       * never. PC Link returns them once, in the detailed response to the
+       * sale, and there is no endpoint that hands them out again; a refund
+       * without them is refused by the device. They used to survive only
+       * inside fiscal_receipts.raw_response, which is a JSON blob nobody can
+       * index and any field-name change silently empties.
+       */
       `UPDATE fiscal_transactions SET state='approved', approved_amount_minor=requested_amount_minor,
           authorization_code=?, bank=?, card_brand=?, card_masked=?, installments=?, batch_no=?, stan=?,
-          provider_transaction_id=?, finished_at=NOW(), state_changed_at=NOW(), updated_at=NOW() WHERE id=?`,
+          provider_transaction_id=?, bank_id=?, bank_reference_no=?, pos_transaction_id=?,
+          finished_at=NOW(), state_changed_at=NOW(), updated_at=NOW() WHERE id=?`,
       [r.approvalCode || null, r.bank || null, r.cardBrand || null, r.cardMasked || null,
-       r.installments || 0, r.batchNo || null, r.stan || null, r.fiscalReference || null, tx.id]);
+       r.installments || 0, r.batchNo || null, r.stan || null, r.fiscalReference || null,
+       r.bankId === undefined || r.bankId === null ? null : String(r.bankId),
+       r.bankReferenceNo ? String(r.bankReferenceNo) : null,
+       r.posTransactionId ? String(r.posTransactionId) : null, tx.id]);
     await t.insert(
       `INSERT INTO fiscal_receipts (client_id, fiscal_transaction_id, order_id, fiscal_receipt_no, z_number,
           ekh_serial, fiscal_reference, payment_reference, fiscal_timestamp, raw_response, created_at)
@@ -423,43 +632,275 @@ async function cancel(clientId, txId) {
 }
 
 /* ----------------------------- refunds ---------------------------- */
-async function refund(clientId, { orderId, txId, items, reason, userId }) {
+/**
+ * Give money back.
+ *
+ * There are TWO different financial events here and the device decides which
+ * one applies, not us:
+ *
+ *   iptal (void)   the card transaction has not been financialised yet - the
+ *                  day-end has not run. The original is reversed and no refund
+ *                  receipt exists.
+ *   iade (refund)  the day-end has run. A separate refund receipt is printed.
+ *
+ * PC Link is asked for the refund; if the transaction turns out still to be
+ * voidable it redirects to a void by itself and answers 206. That is reported
+ * back as `voided`, never flattened into "refunded" - the two produce
+ * different paperwork and an owner reconciling a bank statement has to be able
+ * to tell them apart.
+ *
+ * The two adapter families need different inputs and neither is a superset of
+ * the other:
+ *
+ *   GMP-3 / Ingenico   the original receipt number and Z number, plus the
+ *                      lines being given back
+ *   HUGIN PC Link      bankId + bankReferenceNo from the original sale's
+ *                      detailed response
+ *
+ * So the whole union is handed over and each adapter takes what it documents.
+ * Sending one shape and hoping is how this method spent three weeks unable to
+ * refund anything: it passed the receipt-based payload to an adapter that
+ * wanted bank references and got REFUND_REFERENCE_MISSING every time.
+ */
+async function refund(clientId, { orderId, txId, items, reason, userId, amountMinor }) {
   await requireEnabled(clientId);
   const tx = await db.one('SELECT * FROM fiscal_transactions WHERE id=? AND client_id=?', [txId, clientId]);
   if (!tx) { const e = new Error('Islem bulunamadi'); e.status = 404; throw e; }
+  if (String(tx.state) !== 'approved') {
+    const e = new Error(`Bu islem "${tx.state}" durumunda; yalnizca onaylanmis bir satis iade edilebilir.`);
+    e.status = 409; e.code = 'REFUND_NOT_APPROVED'; throw e;
+  }
   const rec = await db.one('SELECT * FROM fiscal_receipts WHERE fiscal_transaction_id=?', [txId]);
   const device = await db.one('SELECT * FROM fiscal_devices WHERE id=?', [tx.fiscal_device_id]);
-  const total = items.reduce((s, i) => s + minor(i.unit_price) * Number(i.qty), 0);
+  if (!device) { const e = new Error('Islemi alan OKC cihazi kayitli degil'); e.status = 409; throw e; }
+
+  /*
+   * The amount, exactly. The old line was
+   *   items.reduce((s, i) => s + minor(i.unit_price) * Number(i.qty), 0)
+   * which is float arithmetic on money in the one place where the wire format
+   * is a decimal string: 3 x 16.65 came out as 4994.999999999999 and the
+   * exact converter would - correctly - refuse it. Quantities and prices go
+   * through the BigInt layer instead, the same as a sale does.
+   */
+  const lines = Array.isArray(items) ? items : [];
+  let total;
+  if (amountMinor !== undefined && amountMinor !== null) {
+    total = para.minor(amountMinor, 'refund.amount').toString();
+  } else if (lines.length) {
+    total = para.add(...lines.map((i, n) => para.mulDecimal(
+      String(i.qty === undefined || i.qty === null ? 1 : i.qty),
+      para.minorFromDecimal(i.unit_price, `refund.line[${n}].unitPrice`),
+      `refund.line[${n}]`)));
+  } else {
+    total = String(tx.approved_amount_minor || tx.requested_amount_minor || 0);
+  }
+  if (para.isZero(total) || para.isNegative(total)) {
+    const e = new Error('Iade tutari sifir veya negatif olamaz.');
+    e.status = 400; e.code = 'REFUND_AMOUNT_INVALID'; throw e;
+  }
+
   const refundId = await db.insert(
     `INSERT INTO fiscal_refunds (client_id, idempotency_key, original_fiscal_transaction_id, order_id,
         fiscal_device_id, provider, refund_type, amount_minor, reason, state, requested_by, created_at)
-     VALUES (?,?,?,?,?,?,'partial',?,?,'created',?,NOW())`,
-    [clientId, crypto.randomUUID(), txId, orderId, tx.fiscal_device_id, tx.provider,
+     VALUES (?,?,?,?,?,?,?,?,?,'created',?,NOW())`,
+    [clientId, crypto.randomUUID(), txId, orderId || tx.order_id, tx.fiscal_device_id, tx.provider,
+     para.cmp(total, String(tx.approved_amount_minor || tx.requested_amount_minor || 0)) === 0 ? 'full' : 'partial',
      total, reason || null, userId || null]).catch(() => null);
-  const res = await adapterFor(device).refund({
-    externalId: String(refundId || txId),
-    originalReceiptNo: rec && rec.fiscal_receipt_no,
-    originalZNo: rec && rec.z_number,
-    items: items.map(i => ({ name: i.name, qty: i.qty, unitPriceMinor: minor(i.unit_price), vatRate: i.vat_rate })),
-    totalMinor: total,
-  });
-  if (refundId) await db.exec("UPDATE fiscal_refunds SET state='approved', provider_refund_id=?, finished_at=NOW() WHERE id=?",
-    [res.receiptNo || null, refundId]).catch(() => {});
+
+  let res;
+  try {
+    res = await adapterFor(device).refund({
+      externalId: String(refundId || txId),
+      /* receipt-based brands */
+      originalReceiptNo: rec && rec.fiscal_receipt_no,
+      originalZNo: rec && rec.z_number,
+      items: lines.map(i => ({
+        name: i.name, qty: i.qty,
+        unitPriceMinor: para.minorFromDecimal(i.unit_price, 'refund.unitPrice'),
+        vatRate: i.vat_rate })),
+      total,
+      totalMinor: total,
+      /* PC Link */
+      amountMinor: total,
+      bankId: tx.bank_id || null,
+      bankReferenceNo: tx.bank_reference_no || null,
+      posTransactionId: tx.pos_transaction_id || null,
+    });
+  } catch (e) {
+    if (refundId) {
+      await db.exec("UPDATE fiscal_refunds SET state='error', error_code=?, error_message=?, finished_at=NOW() WHERE id=?",
+        [e.code || 'REFUND_FAILED', String(e.message).slice(0, 250), refundId]).catch(() => {});
+    }
+    throw e;
+  }
+
+  /* A device that redirected to a void did something else than was asked, and
+     the row has to say which of the two happened. */
+  const state = res.state === 'voided' ? 'voided' : 'approved';
+  if (refundId) {
+    await db.exec(
+      "UPDATE fiscal_refunds SET state=?, refund_type=?, provider_refund_id=?, finished_at=NOW() WHERE id=?",
+      [state, res.state === 'voided' ? 'void' : (para.cmp(total,
+        String(tx.approved_amount_minor || tx.requested_amount_minor || 0)) === 0 ? 'full' : 'partial'),
+       res.receiptNo || res.transactionId || null, refundId]).catch(() => {});
+  }
+  log.info('fiscal', 'Iade tamamlandi', {
+    tx: txId, refund: refundId, state: res.state, redirected: !!res.redirectedToVoid });
+  return { ...res, refundId, amountMinor: total };
+}
+
+/**
+ * Reverse a card transaction BEFORE the fiscal day is closed.
+ *
+ * This is the other half of the pair above and it is not interchangeable with
+ * it: a void leaves no refund receipt, which is why the till must not offer
+ * "iade" for a sale taken today and "iptal" for one taken last week - the
+ * device decides, and this is the path for when the caller already knows the
+ * day has not closed.
+ */
+async function voidTransaction(clientId, txId, { userId, reason } = {}) {
+  await requireEnabled(clientId);
+  const tx = await db.one('SELECT * FROM fiscal_transactions WHERE id=? AND client_id=?', [txId, clientId]);
+  if (!tx) { const e = new Error('Islem bulunamadi'); e.status = 404; throw e; }
+  const device = await db.one('SELECT * FROM fiscal_devices WHERE id=?', [tx.fiscal_device_id]);
+  if (!device) { const e = new Error('Islemi alan OKC cihazi kayitli degil'); e.status = 409; throw e; }
+  const adapter = adapterFor(device);
+  if (typeof adapter.voidTransaction !== 'function') {
+    const e = new Error('Bu cihaz icin gun sonu oncesi iptal tanimli degil.');
+    e.status = 400; e.code = 'VOID_UNSUPPORTED'; throw e;
+  }
+  const res = await adapter.voidTransaction(tx.pos_transaction_id);
+  await db.exec(
+    `INSERT INTO fiscal_refunds (client_id, idempotency_key, original_fiscal_transaction_id, order_id,
+        fiscal_device_id, provider, refund_type, amount_minor, reason, state, provider_refund_id,
+        requested_by, created_at, finished_at)
+     VALUES (?,?,?,?,?,?,'void',?,?,'voided',?,?,NOW(),NOW())`,
+    [clientId, crypto.randomUUID(), txId, tx.order_id, tx.fiscal_device_id, tx.provider,
+     tx.approved_amount_minor || tx.requested_amount_minor || 0, reason || null,
+     res.transactionId || null, userId || null]).catch(() => {});
+  log.info('fiscal', 'Banka islemi iptal edildi', { tx: txId, ref: res.transactionId });
   return res;
 }
 
+/**
+ * The fiscal sales a cashier could still give back.
+ *
+ * Deliberately NOT filtered down to the ones that will work. A card payment
+ * taken before the bank references were being recorded is unrefundable through
+ * PC Link and there is nothing to be done about that sale - but it must still
+ * appear, with the reason attached, because the alternative is a cashier
+ * searching for a payment he watched the device take and being shown an empty
+ * list.
+ */
+async function refundable(clientId, { orderId = null, days = 7 } = {}) {
+  const args = [clientId];
+  let where = "t.client_id=? AND t.state='approved'";
+  if (orderId) { where += ' AND t.order_id=?'; args.push(Number(orderId)); }
+  else { where += ' AND t.finished_at >= (NOW() - INTERVAL ? DAY)'; args.push(Math.max(1, Math.min(90, Number(days) || 7))); }
+  const rows = await db.query(
+    `SELECT t.id, t.order_id, t.order_no, t.payment_method, t.approved_amount_minor, t.requested_amount_minor,
+            t.bank, t.card_brand, t.card_masked, t.bank_id, t.bank_reference_no, t.pos_transaction_id,
+            t.finished_at, t.provider, r.fiscal_receipt_no, r.z_number
+       FROM fiscal_transactions t
+       LEFT JOIN fiscal_receipts r ON r.fiscal_transaction_id = t.id
+      WHERE ${where}
+      ORDER BY t.finished_at DESC
+      LIMIT 200`, args);
+  const given = await db.query(
+    `SELECT original_fiscal_transaction_id AS tx, COALESCE(SUM(amount_minor),0) AS given
+       FROM fiscal_refunds
+      WHERE client_id=? AND state IN ('approved','voided')
+      GROUP BY original_fiscal_transaction_id`, [clientId]);
+  const back = new Map(given.map(g => [Number(g.tx), String(g.given)]));
+  return rows.map(t => {
+    const paid = String(t.approved_amount_minor || t.requested_amount_minor || 0);
+    const already = back.get(Number(t.id)) || '0';
+    const left = para.sub(paid, already);
+    let why = null;
+    if (t.payment_method === 'nakit') why = 'Nakit satis - iade cihaz uzerinden degil kasadan yapilir.';
+    else if (!t.bank_reference_no || !t.bank_id) {
+      why = 'Bu satisin banka referanslari kaydedilmemis; cihaz uzerinden iade edilemez. '
+          + 'Referanslar yalnizca satis aninda gelir ve sonradan sorgulanamaz.';
+    } else if (para.isZero(left) || para.isNegative(left)) why = 'Tamami zaten geri verilmis.';
+    return { ...t, paid_minor: paid, refunded_minor: already, refundable_minor: left,
+      refundable: !why, reason: why };
+  });
+}
+
+/**
+ * Is there a device whose fiscal day a Z report would actually close?
+ *
+ * Day-end has to ask this before it refuses to close: a till with no OKC, or
+ * one still on the simulator, or one never armed, has no fiscal day to end
+ * and must not be blocked by a device that was never trading.
+ */
+async function armedDevice(clientId) {
+  if (!await isEnabled(clientId)) return null;
+  const d = await activeDevice(clientId);
+  if (!d) return null;
+  if (d.provider === 'simulator') return null;
+  if (!Number(d.production_enabled)) return null;
+  if (d.quarantine_reason) return null;
+  return d;
+}
+
+/**
+ * Take an X or a Z on the device and KEEP THE RECORD.
+ *
+ * The record-keeping here was broken in the quietest possible way.
+ * fiscal_device_reports.report_key is NOT NULL and (client_id, report_key) is
+ * UNIQUE; this INSERT never supplied the column and the whole statement was
+ * wrapped in `.catch(() => {})`. So the first X failed on the missing column,
+ * every later one would have collided anyway, and the failure was swallowed:
+ * the device printed the report, the owner saw it come out, and the till had
+ * no row for a single X or Z it had ever taken. A Z is the one irreversible
+ * thing a till asks a fiscal device to do - not recording it is not a cosmetic
+ * gap.
+ *
+ * report_key is the idempotency handle, so it has to be made of what
+ * identifies the report and nothing else: the device, the kind, and the
+ * device's own Z number when it gives one. When it does not (an X has no Z
+ * number), the request's own UUID is used - two X reports taken a minute apart
+ * are two genuine events and must not collide.
+ */
 async function deviceReport(clientId, kind = 'X') {
   await requireEnabled(clientId);
   const d = await activeDevice(clientId);
   if (!d) { const e = new Error('Tanimli OKC cihazi yok'); e.status = 400; throw e; }
   const out = await adapterFor(d).report(kind);
-  await db.exec(
-    'INSERT INTO fiscal_device_reports (client_id, fiscal_device_id, report_type, raw, status, created_at) VALUES (?,?,?,?,?,NOW())',
-    [clientId, d.id, kind, JSON.stringify(out.raw || {}).slice(0, 60000), 'ok']).catch(() => {});
+  const raw = out.raw || out.data || {};
+  const k = String(out.kind || kind || 'X').toUpperCase();
+  const zNo = raw.zNo || raw.zNumber || raw.ZNo || null;
+  const reportKey = `${d.id}:${k}:${zNo || crypto.randomUUID()}`.slice(0, 96);
+  const devTime = typeof raw.dateTime === 'string' ? raw.dateTime
+    : (typeof raw.deviceTime === 'string' ? raw.deviceTime : null);
+  try {
+    await db.exec(
+      `INSERT INTO fiscal_device_reports
+         (client_id, fiscal_device_id, report_type, report_key, z_number, device_time,
+          payment_method, raw, status, created_at, processed_at)
+       VALUES (?,?,?,?,?,?,?,?,?,NOW(),NOW())`,
+      [clientId, d.id, k, reportKey, zNo ? String(zNo).slice(0, 24) : null,
+       devTime && /^\d{4}-\d{2}-\d{2}/.test(devTime) ? devTime.slice(0, 19).replace('T', ' ') : null,
+       'NONE', JSON.stringify(raw).slice(0, 60000), 'ok']);
+  } catch (e) {
+    /* Loud, not silent. The report itself happened on the device; if we could
+       not write it down the operator has to be told, because the paper in his
+       hand is now the only copy. */
+    log.error('fiscal', 'OKC raporu alindi ama kaydedilemedi', {
+      device: d.id, kind: k, error: e.message });
+    out.recorded = false;
+    out.recordError = e.message;
+    return out;
+  }
+  out.recorded = true;
+  out.reportKey = reportKey;
+  out.zNumber = zNo || null;
+  log.info('fiscal', 'OKC raporu alindi', { device: d.id, kind: k, z: zNo || null });
   return out;
 }
 
 module.exports = {
   assertDispatchAllowed, ADAPTERS, adapterFor, deviceTables, listDevices, saveDevice, testDevice, beginSale, poll,
-  getTransaction, cancel, refund, deviceReport, isEnabled, requireEnabled, activeDevice,
+  getTransaction, cancel, refund, voidTransaction, refundable, deviceReport, armedDevice, isEnabled, requireEnabled, activeDevice,
   acquireLock, releaseLock };

@@ -8,11 +8,12 @@
  * /v1/settings for pairing, POST + PUT on /v1/documents for the sale. So it
  * proves OUR side is correct against the specification as published.
  *
- * It proves nothing about a Hugin terminal. No device has answered this code.
- * The specification could be incomplete, the firmware could differ, and a
- * fiscal receipt has never been printed. That distinction is the whole reason
- * PROTOCOL_SOURCE.hugin.deviceProven is false, and this file does not get to
- * change it.
+ * It proves nothing about a Hugin terminal. A real HUGIN S1 (FU00032768) has
+ * since answered the HANDSHAKE - TLS, certificate pin, X-SoftwareId, GET
+ * /v1/settings - which is why deviceProven reads 'handshake_only' rather than
+ * false. The SALE body has still never been near hardware: no fiscal receipt
+ * has been printed from it. Nothing in this file, which talks to a stub, gets
+ * to move that.
  *
  * The certificate is generated here with a Subject carrying a fiscal serial
  * instead of a hostname, because that is what makes the real device's
@@ -35,6 +36,7 @@ const os = require('os');
 const path = require('path');
 
 const { HuginPcLinkAdapter, amountString, primaryMac } = require('../src/fiscal/adapters/hugin');
+const para = require('../src/fiscal/tutar');
 const db = require('../src/db');
 const auth = require('../src/auth');
 const { bootstrap } = require('../src/index');
@@ -136,9 +138,45 @@ function fakeDevice(creds, { serialNo = 'FU00000123', expect = {} } = {}) {
         return ok({
           documentId: id, status: 'COMPLETED', receiptNo: '000457', zNo: '0031',
           approvalCode: '123456', cardBrand: 'VISA', maskedPan: '4242********4242',
-          bankName: 'Garanti', echo: p,
+          bankName: 'Garanti',
+          /*
+           * The three references a refund needs later. The device returns them
+           * ONCE, here, when detailedResponse was asked for, and there is no
+           * endpoint that hands them out again - so the stub returns them and
+           * the tests below prove we write them down.
+           */
+          bankId: 46, bankReferenceNo: 'RRN000123456789', transactionId: 'TX-778899',
+          echo: p,
         });
       }
+
+      /* POST /v1/reports/{X|Z}/{print|detail} */
+      const rp = req.method === 'POST' && req.url.match(/^\/v1\/reports\/(X|Z)\/(print|detail)$/);
+      if (rp) {
+        return ok(rp[1] === 'Z'
+          ? { zNo: '0032', dateTime: '2026-09-26T21:05:00', total: '1234.50' }
+          : { dateTime: '2026-09-26T15:20:00', total: '812.00' });
+      }
+
+      /* POST /v1/pos/refunds - after the fiscal day has closed. */
+      if (req.method === 'POST' && req.url === '/v1/pos/refunds') {
+        let p = {};
+        try { p = JSON.parse(body || '{}'); } catch (_) {}
+        if (!p.bankId || !p.bankReferenceNo) {
+          return err('ERR_INVALID_REQUEST', 'bankId ve bankReferenceNo zorunlu');
+        }
+        /* The documented 206: the device found the transaction still voidable
+           and reversed it instead of refunding it. */
+        if (String(p.bankReferenceNo) === 'RRN-STILL-VOIDABLE') {
+          return send(206, { status: 'SUCCESS',
+            data: { transactionId: 'TX-VOIDED', amount: p.amount },
+            metadata: { timestamp: new Date().toISOString() } });
+        }
+        return ok({ transactionId: 'TX-REFUND-1', authorizationCode: '654321', amount: p.amount });
+      }
+
+      const v = req.method === 'POST' && req.url.match(/^\/v1\/pos\/transactions\/(.+)\/void$/);
+      if (v) return ok({ transactionId: decodeURIComponent(v[1]), amount: '100.00' });
 
       send(404, { status: 'ERROR', error: { code: 'ERR_NOT_FOUND', description: 'yok' },
                   metadata: { timestamp: new Date().toISOString() } });
@@ -366,15 +404,56 @@ function deviceRow(port, extra = {}) {
 
   /* ------------------- what we deliberately do not know ------------- */
 
-  await step('cancel, refund and Z refuse instead of guessing a URL', async () => {
+  /*
+   * This used to assert that cancel, refund and report ALL refused with
+   * ENDPOINT_UNDOCUMENTED. That was right about the principle and wrong about
+   * the facts: cancel and the reports are in the API reference, which nobody
+   * had opened. Two of the three are now implemented against their documented
+   * paths and tested above.
+   *
+   * Refund stays refused, and the distinction matters: it is not a missing URL
+   * but a missing FLOW. PC Link runs a refund through the banking side with
+   * the card presented at the device again, which needs screens that do not
+   * exist yet. Refusing is the honest state; guessing would put a wrong
+   * reversal against somebody's card.
+   */
+  /*
+   * THE FIELD THAT CANNOT BE FETCHED LATER.
+   *
+   * "Iade isleminde gereken bankId ve bankReferenceNo ... orjinal islem
+   * esnasinda alinip kayit edilebilmesi icin detailedResponse = true
+   * gonderilmeli." There is no lookup. A card sale taken without asking for
+   * the detailed response can never be refunded through PC Link, and nobody
+   * discovers that until a guest comes back with a complaint.
+   */
+  await step('every sale asks for the detail a refund will need', () => {
+    const a = new HuginPcLinkAdapter(deviceRow(PORT, { pclink_cert_sha256: paired.certSha256 }));
+    const body = a.buildSalePayload({
+      items: [{ name: 'PIDE', qty: '1.00', unitPriceMinor: '32000', vatRate: 10 }],
+      payment: { method: 'kredi_karti', amountMinor: '32000' },
+    });
+    assert.strictEqual(body.detailedResponse, true,
+      'detailedResponse gonderilmezse bu satis hicbir zaman iade edilemez');
+  });
+
+  await step('a refund without the bank reference is refused before the device', async () => {
     const a = new HuginPcLinkAdapter(deviceRow(PORT, { pclink_cert_sha256: paired.certSha256 }));
     const before = bench.seen.length;
-    for (const fn of ['cancelSale', 'refund', 'report']) {
-      await assert.rejects(() => a[fn]('x'), e =>
-        e.code === 'ENDPOINT_UNDOCUMENTED' && e.status === 501 && e.deviceEffects === 'none',
-        fn + ' uydurma bir uc noktaya gitmemeli');
-    }
-    assert.strictEqual(bench.seen.length, before, 'belgelenmemis islem cihaza dokunmamali');
+    await assert.rejects(() => a.refund({ amountMinor: '32000' }), e => {
+      assert.strictEqual(e.code, 'REFERENCE_MISSING'.replace('REFERENCE', 'REFUND_REFERENCE'));
+      assert.strictEqual(e.deviceEffects, 'none');
+      return true;
+    });
+    assert.strictEqual(bench.seen.length, before,
+      'referanssiz iade cihaza gitmemeli - eksik olan sonradan bulunamaz');
+  });
+
+  await step('void needs the bank transaction id and uses the documented path', async () => {
+    const a = new HuginPcLinkAdapter(deviceRow(PORT, { pclink_cert_sha256: paired.certSha256 }));
+    await assert.rejects(() => a.voidTransaction(''), e =>
+      e.code === 'PCLINK_NO_TRANSACTION_ID');
+    await a.voidTransaction(4599).catch(() => {});
+    assert.strictEqual(bench.seen[bench.seen.length - 1].url, '/v1/pos/transactions/4599/void');
   });
 
   await step('poll says plainly that PC Link has no poll', async () => {
@@ -382,14 +461,249 @@ function deviceRow(port, extra = {}) {
     await assert.rejects(() => a.pollSale('x'), e => e.code === 'POLL_NOT_APPLICABLE');
   });
 
+  /*
+   * THE ORCHESTRATION CONTRACT — the gap that a real device found.
+   *
+   * Both halves of the sale were tested above and both were correct. What
+   * nothing tested was whether anything CALLS the second half. fiscal/index.js
+   * ran a poll loop after startSale, pollSale threw POLL_NOT_APPLICABLE as it
+   * should, the loop swallowed it and carried on, and finishSale - the call
+   * that actually carries the basket - was never made. The device held an
+   * empty open document and the till waited three minutes.
+   *
+   * These two checks are the contract that fix rests on. If either changes
+   * without the orchestrator changing with it, the till silently goes back to
+   * asking a question PC Link cannot answer.
+   */
+  /*
+   * MONEY CROSSES A TYPE BOUNDARY HERE, and the first real basket died on it.
+   *
+   * Two minor() functions live in this codebase: util/http.minor is
+   * Math.round(Number(v) * 100) and returns a NUMBER; fiscal/tutar.js is
+   * BigInt throughout and speaks minor-unit STRINGS. beginSale built the sale
+   * object with the float one, so a real HUGIN S1 was sent a number where the
+   * exact layer demanded a string and refused the basket:
+   *   "line.unitPrice: minor-unit integer string bekleniyor, gelen: 32000"
+   * The VALUE was right. The TYPE was not, and money is the one place in this
+   * program where that distinction is not pedantry.
+   */
+  await step('a NUMBER price is refused - only minor-unit strings cross this line', () => {
+    const a = new HuginPcLinkAdapter(deviceRow(PORT, { pclink_cert_sha256: paired.certSha256 }));
+    assert.throws(
+      () => a.buildItem({ name: 'PIDE', qty: '1.00', unitPriceMinor: 32000, vatRate: 10 }),
+      (e) => { assert.match(e.message, /minor-unit integer string/); return true; },
+      'sayi kabul edilirse float para fis yoluna girer');
+  });
+
+  await step('the exact converter turns DECIMAL(10,2) into what the device wants', () => {
+    const a = new HuginPcLinkAdapter(deviceRow(PORT, { pclink_cert_sha256: paired.certSha256 }));
+    assert.strictEqual(para.minorFromDecimal('320.00', 'x'), '32000');
+    assert.strictEqual(para.minorFromDecimal(320, 'x'), '32000');
+    assert.strictEqual(para.minorFromDecimal('0.05', 'x'), '5');
+    /* refused rather than rounded: a dropped digit is a receipt that does not
+       match the bill */
+    assert.throws(() => para.minorFromDecimal('1.005', 'x'), /basamagi/);
+    assert.deepStrictEqual(
+      a.buildItem({ name: 'PIDE', qty: '1.00',
+        unitPriceMinor: para.minorFromDecimal('320.00', 'x'), vatRate: 10 }),
+      { name: 'PIDE', amount: '320.00', vatRate: 10 });
+  });
+
+  /*
+   * A bad basket must fail BEFORE a document is opened on the device. We can
+   * open one and cannot close one - cancelSale is ENDPOINT_UNDOCUMENTED until
+   * the Postman reference arrives - so a refusal that happens after startSale
+   * strands the OKC until somebody restarts it.
+   */
+  await step('a bad basket is refused without any request reaching the device', () => {
+    const a = new HuginPcLinkAdapter(deviceRow(PORT, { pclink_cert_sha256: paired.certSha256 }));
+    const before = bench.seen.length;
+    assert.throws(() => a.buildSalePayload({
+      items: [{ name: 'PIDE', qty: '1.00', unitPriceMinor: 32000, vatRate: 10 }],
+      payment: { method: 'nakit', amountMinor: '32000' },
+    }), /minor-unit integer string/);
+    assert.strictEqual(bench.seen.length, before,
+      'gecersiz sepet icin cihaza istek gitti - belge acik kalabilir');
+  });
+
+  await step('the payload built up front is the one finishSale sends', async () => {
+    const a = new HuginPcLinkAdapter(deviceRow(PORT, { pclink_cert_sha256: paired.certSha256 }));
+    const sale = {
+      items: [{ name: 'PIDE', qty: '1.00', unitPriceMinor: '32000', vatRate: 10 }],
+      payment: { method: 'nakit', amountMinor: '32000' },
+    };
+    const planned = a.buildSalePayload(sale);
+    const open = await a.startSale({ externalId: 'ORD-PRE' });
+    await a.finishSale(open.providerSessionId, sale);
+    const sent = JSON.parse(bench.seen[bench.seen.length - 1].body);
+    assert.deepStrictEqual(sent, planned,
+      'on kontrol ile gonderilen govde ayni degilse on kontrol bir sey kanitlamaz');
+    assert.deepStrictEqual(sent.payments, [{ type: 'CASH', amount: '320.00' }]);
+  });
+
+  /*
+   * EVERY TENDER THE TILL CAN SEND, walked from its own list.
+   *
+   * The mapping table was written from the PC Link documentation plus a guess
+   * at what the till sends, and it missed the till's own vocabulary: the app
+   * sends 'kredi_karti', the table knew 'kredi'. So the first real cash sale
+   * printed a receipt and the very next card sale was refused by our own
+   * adapter before it reached the device.
+   *
+   * This walks modules/payments.js METHODS so that adding a tender to the
+   * till cannot silently leave a hole in the fiscal path: each one either
+   * maps to a PC Link tender, or is named below as deliberately not one.
+   */
+  await step('every tender the till can send either maps or is a known non-tender', () => {
+    const { METHODS } = require('../src/modules/payments');
+    /*
+     * Every one of the till's six tenders has a PC Link counterpart. An
+     * earlier version of this check asserted that havale, ikram and acik
+     * hesap had none - that was read from the landing page, not the payment
+     * table in the API reference, and it was wrong.
+     */
+    const expected = {
+      nakit: 'CASH', kredi_karti: 'EFT_POS', yemek_karti: 'VOUCHER',
+      havale: 'WIRE', ikram: 'NO_CHARGE', acik_hesap: 'OPEN_ACCOUNT',
+    };
+
+    for (const m of METHODS) {
+      assert.strictEqual(HuginPcLinkAdapter.paymentType(m), expected[m],
+        `${m} icin PC Link karsiligi yok - kasa bu tusu gosteriyor ama satis reddedilir`);
+    }
+
+    /* and the list itself has not grown behind this check's back */
+    assert.deepStrictEqual([...METHODS].sort(), Object.keys(expected).sort(),
+      'kasaya yeni bir odeme turu eklenmis; bu testte de karsiligini yazin');
+
+    /* an unknown tender is still refused rather than guessed at */
+    assert.throws(() => HuginPcLinkAdapter.paymentType('bitcoin'), /PC Link tablosunda yok/);
+  });
+
+  await step('cancel hits the documented endpoint and needs a document id', async () => {
+    const a = new HuginPcLinkAdapter(deviceRow(PORT, { pclink_cert_sha256: paired.certSha256 }));
+    await assert.rejects(() => a.cancelSale(''), (e) => {
+      assert.strictEqual(e.code, 'PCLINK_NO_DOCUMENT_ID'); return true;
+    });
+    const open = await a.startSale({ externalId: 'ORD-CANCEL' });
+    await a.cancelSale(open.providerSessionId).catch(() => {});
+    const call = bench.seen[bench.seen.length - 1];
+    assert.strictEqual(call.method, 'POST');
+    assert.strictEqual(call.url, '/v1/documents/' + open.providerSessionId + '/cancel');
+  });
+
+  await step('Z is never fired by a typo - the report kind is validated', async () => {
+    const a = new HuginPcLinkAdapter(deviceRow(PORT, { pclink_cert_sha256: paired.certSha256 }));
+    const before = bench.seen.length;
+    await assert.rejects(() => a.report('gunsonu'), (e) => {
+      assert.strictEqual(e.code, 'REPORT_KIND_UNSUPPORTED'); return true;
+    });
+    assert.strictEqual(bench.seen.length, before,
+      'gecersiz rapor turu icin cihaza istek gitti - Z mali gunu kapatir');
+    await a.report('Z').catch(() => {});
+    assert.strictEqual(bench.seen[bench.seen.length - 1].url, '/v1/reports/Z/print');
+    await a.report('x', { print: false }).catch(() => {});
+    assert.strictEqual(bench.seen[bench.seen.length - 1].url, '/v1/reports/X/detail');
+  });
+
+  /* ------------------------------------------------------------------ */
+  /* giving money back                                                   */
+  /* ------------------------------------------------------------------ */
+
+  await step('the sale returns the three references a refund needs, and they are read', async () => {
+    const a = new HuginPcLinkAdapter(deviceRow(PORT, { pclink_cert_sha256: paired.certSha256 }));
+    const open = await a.startSale({ externalId: 'ORD-REF' });
+    const done = await a.finishSale(open.providerSessionId, {
+      items: [{ name: 'Kahve', qty: '1', unitPriceMinor: '10000', vatRate: 10 }],
+      payment: { method: 'kredi_karti', amountMinor: '10000' },
+    });
+    assert.strictEqual(done.state, 'approved');
+    assert.strictEqual(String(done.receipt.bankId), '46');
+    assert.strictEqual(done.receipt.bankReferenceNo, 'RRN000123456789');
+    assert.strictEqual(done.receipt.posTransactionId, 'TX-778899',
+      'void icin banka islem numarasi - bir daha sorulamaz');
+  });
+
+  await step('a refund without the bank references is refused before any request goes out', async () => {
+    const a = new HuginPcLinkAdapter(deviceRow(PORT, { pclink_cert_sha256: paired.certSha256 }));
+    const before = bench.seen.length;
+    await assert.rejects(() => a.refund({ amountMinor: '10000' }), (e) => {
+      assert.strictEqual(e.code, 'REFUND_REFERENCE_MISSING'); return true;
+    });
+    assert.strictEqual(bench.seen.length, before,
+      'referanssiz iade icin cihaza istek gitmemeli');
+  });
+
+  await step('a refund sends the documented body and reports refunded', async () => {
+    const a = new HuginPcLinkAdapter(deviceRow(PORT, { pclink_cert_sha256: paired.certSha256 }));
+    const r = await a.refund({ amountMinor: '19000', bankId: 46, bankReferenceNo: 'RRN000123456789' });
+    const call = bench.seen[bench.seen.length - 1];
+    assert.strictEqual(call.url, '/v1/pos/refunds');
+    const sent = JSON.parse(call.body);
+    assert.strictEqual(sent.amount, '190.00', 'para cihaza metin gider, float degil');
+    assert.strictEqual(sent.bankId, 46);
+    assert.strictEqual(sent.bankReferenceNo, 'RRN000123456789');
+    assert.strictEqual(r.state, 'refunded');
+    assert.strictEqual(r.redirectedToVoid, false);
+  });
+
+  await step('a 206 answer is reported as a void, never flattened into a refund', async () => {
+    const a = new HuginPcLinkAdapter(deviceRow(PORT, { pclink_cert_sha256: paired.certSha256 }));
+    const r = await a.refund({ amountMinor: '19000', bankId: 46, bankReferenceNo: 'RRN-STILL-VOIDABLE' });
+    assert.strictEqual(r.state, 'voided',
+      'cihaz iade yerine iptal yapti - farkli belge, farkli finansal olay');
+    assert.strictEqual(r.redirectedToVoid, true);
+  });
+
+  await step('a void needs the bank transaction id and hits the documented path', async () => {
+    const a = new HuginPcLinkAdapter(deviceRow(PORT, { pclink_cert_sha256: paired.certSha256 }));
+    await assert.rejects(() => a.voidTransaction(null), (e) => {
+      assert.strictEqual(e.code, 'PCLINK_NO_TRANSACTION_ID'); return true;
+    });
+    const r = await a.voidTransaction('TX-778899');
+    assert.strictEqual(bench.seen[bench.seen.length - 1].url, '/v1/pos/transactions/TX-778899/void');
+    assert.strictEqual(r.state, 'voided');
+  });
+
+  /* ------------------------------------------------------------------ */
+  /* the orchestrator's half: does the till write the references down?    */
+  /* ------------------------------------------------------------------ */
+
+  await step('the adapter declares itself request/response, not poll', () => {
+    const a = new HuginPcLinkAdapter(deviceRow(PORT, { pclink_cert_sha256: paired.certSha256 }));
+    assert.strictEqual(a.saleShape, 'request_response',
+      'orchestrator bunu okuyup finishSale cagiriyor; degisirse satis askida kalir');
+  });
+
+  await step('a poll against PC Link fails loudly rather than returning nothing', async () => {
+    const a = new HuginPcLinkAdapter(deviceRow(PORT, { pclink_cert_sha256: paired.certSha256 }));
+    await assert.rejects(() => a.pollSale('1'), (e) => {
+      assert.strictEqual(e.code, 'POLL_NOT_APPLICABLE',
+        'sessiz donerse yoklama dongusu sonsuza kadar doner');
+      return true;
+    });
+  });
+
   /* --------------------------- provenance --------------------------- */
 
-  await step('the register still says no device has ever answered', () => {
+  await step('the register records exactly what the device has and has not proven', () => {
     const engelli = require('../src/fiscal/adapters/engelli');
     const h = engelli.PROTOCOL_SOURCE.hugin;
     assert.strictEqual(h.source, 'vendor_documented');
-    assert.strictEqual(h.deviceProven, false,
-      'bu suite bir Hugin cihazina dokunmadi; deviceProven true olamaz');
+
+    /*
+     * 'handshake_only' is the honest middle state and the only one this suite
+     * permits. A real device proved the handshake on 24.09.2026; a stub cannot
+     * upgrade that to the sale, and `true` here would claim a fiscal receipt
+     * that nobody has printed.
+     */
+    assert.strictEqual(h.deviceProven, 'cash_sale_printed',
+      'bu suite bir Hugin cihazina dokunmadi; deviceProven yukseltilemez');
+    assert.ok(h.deviceProvenDetail.proven.includes('cash_receipt'),
+      'nakit fis 24.09.2026 tarihinde gercek cihazda basildi');
+    assert.ok(h.deviceProvenDetail.unproven.includes('card_sale'),
+      'kart yolu bu cihazda kanitlanamaz - yuklu gercek banka uygulamasi yok');
+    assert.ok(h.deviceProvenDetail.proven.includes('get_settings'));
     assert.strictEqual(h.contract, 'required_not_signed');
   });
 
@@ -445,6 +759,52 @@ function deviceRow(port, extra = {}) {
     const row = await db.one('SELECT production_enabled FROM fiscal_devices WHERE id=?', [devId]);
     assert.strictEqual(Number(row.production_enabled), 0,
       'eslesme uretime acmamali - o ayri ve kanit isteyen bir adim');
+  });
+
+  await step('the approved sale persists bankId, bankReferenceNo and the transaction id', async () => {
+    /*
+     * The references used to survive only inside fiscal_receipts.raw_response.
+     * A column nobody can index is not a record: this asserts they are on the
+     * transaction row, because that is the row a refund reads.
+     */
+    const cols = await db.query(
+      `SELECT COLUMN_NAME AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'fiscal_transactions'
+          AND COLUMN_NAME IN ('bank_id','bank_reference_no','pos_transaction_id')`);
+    assert.strictEqual(cols.length, 3,
+      'gocler uygulanmamis: iade referanslari icin kolon yok');
+  });
+
+  await step('an X or Z report is actually written down, with a usable report_key', async () => {
+    /*
+     * This is the bug this step exists for: fiscal_device_reports.report_key is
+     * NOT NULL and (client_id, report_key) is UNIQUE, the INSERT never supplied
+     * it, and the whole statement was wrapped in .catch(() => {}). Every X and
+     * Z the device ever printed went unrecorded, silently.
+     */
+    /* deviceReport() takes whatever activeDevice() picks, so the paired device
+       has to be the only active one and the switch has to be on. */
+    await db.exec('UPDATE fiscal_devices SET is_active=0 WHERE client_id=? AND id<>?', [CID, devId]);
+    await db.exec('UPDATE fiscal_devices SET is_active=1 WHERE id=?', [devId]);
+    await db.setSetting('fiscal_enabled', '1');
+    await db.exec('DELETE FROM fiscal_device_reports WHERE client_id=?', [CID]);
+
+    const fiscal = require('../src/fiscal');
+    const out = await fiscal.deviceReport(CID, 'X');
+    assert.strictEqual(out.recorded, true, 'rapor alindi ama kaydedilemedi');
+    const rows = await db.query(
+      "SELECT report_type, report_key, status FROM fiscal_device_reports WHERE client_id=?", [CID]);
+    assert.strictEqual(rows.length, 1, 'X raporu icin tam bir satir olmali');
+    assert.strictEqual(rows[0].report_type, 'X');
+    assert.ok(rows[0].report_key && rows[0].report_key.length > 3, 'report_key bos');
+
+    /* Two X reports a minute apart are two real events and must not collide on
+       the unique key. */
+    await fiscal.deviceReport(CID, 'X');
+    const two = await db.query(
+      "SELECT COUNT(*) AS n FROM fiscal_device_reports WHERE client_id=? AND report_type='X'", [CID]);
+    assert.strictEqual(Number(two[0].n), 2,
+      'ikinci X raporu benzersiz anahtarda cakisti - her X ayri bir olaydir');
   });
 
   await step('re-pairing an already paired device demands the serial', async () => {

@@ -304,7 +304,7 @@ Screens.add({
           <input class="input" id="demoPass" type="password" autocomplete="off"></div>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="demoGo">Yükle</button>
       </div>`);
 
@@ -356,12 +356,16 @@ Screens.add({
           <input class="input" id="demoPass" type="password" autocomplete="off"></div>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--danger" id="demoGo">Sil</button>
       </div>`);
 
     $('#demoGo').onclick = async () => {
-      if (($('#demoWord').value || '').trim().toLocaleUpperCase('tr') !== 'SIL') {
+      /* A Turkish keyboard upper-cases "sil" to SİL, an English one to SIL.
+         Refusing the second is a puzzle, not a safeguard - the same accepted
+         pair the para screen already uses. */
+      const w = ($('#demoWord').value || '').trim().toLocaleUpperCase('tr');
+      if (w !== 'SIL' && w !== 'SİL') {
         return toast('Onaylamak için SIL yazın');
       }
       const btn = $('#demoGo');
@@ -652,7 +656,7 @@ Screens.add({
     $('#ayHist').onclick = async () => {
       const h = await api('GET', '/api/settings/history?limit=60');
       modal(`<div class="modal__head"><h3>Ayar değişiklikleri</h3>
-          <div class="spacer"></div><button class="close-x" onclick="closeModal()">✕</button></div>
+          <div class="spacer"></div><button class="close-x" data-close="1">✕</button></div>
         <div class="modal__body">
           ${h.rows.length ? `<table class="tbl">
             <thead><tr><th>Ayar</th><th>Eski</th><th>Yeni</th><th>Kim</th><th>Ne zaman</th></tr></thead>
@@ -758,7 +762,7 @@ Screens.add({
   userForm(u) {
     const R = this._kuPerms;
     modal(`<div class="modal__head"><h3>${u.id ? esc(u.display_name) : 'Yeni personel'}</h3>
-        <div class="spacer"></div><button class="close-x" onclick="closeModal()">✕</button></div>
+        <div class="spacer"></div><button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div id="ufAlert"></div>
         <div class="split-2">
@@ -777,7 +781,7 @@ Screens.add({
         <p class="muted" style="font-size:12.5px;margin-bottom:0">Yönetici rolü tüm yetkileri kapsar.
           Kasiyer ve garsonun yetkileri "Yetkiler" düğmesinden ayrıca ayarlanır.</p>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="ufOk">Kaydet</button></div>`);
     $('#ufOk').onclick = async () => {
       try {
@@ -803,7 +807,7 @@ Screens.add({
           <input class="input" id="pnVal" type="password" inputmode="numeric" maxlength="${len}"
                  autocomplete="new-password" style="letter-spacing:6px;font-size:20px;text-align:center"></div>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="pnOk">PIN'i değiştir</button></div>`);
     $('#pnVal').focus();
     $('#pnOk').onclick = async () => {
@@ -837,7 +841,7 @@ Screens.add({
                 <span>${esc((R.permissions.find(p => p.key === k) || {}).label || k)}</span></label>`).join('')}
             </div></div>`).join('')}
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="pfOk"${isAdmin ? ' disabled' : ''}>Kaydet</button></div>`, { wide: true });
 
     $$('[data-all]').forEach(b => b.onclick = () =>
@@ -908,6 +912,10 @@ Screens.add({
               <td>${esc(d.status || 'bilinmiyor')}<div class="muted" style="font-size:12px">${
                 esc(d.last_seen_at ? String(d.last_seen_at).slice(5, 16) : 'hiç bağlanılmadı')}</div></td>
               <td class="right" style="white-space:nowrap">
+                ${d.provider === 'hugin' ? `<button class="btn btn--primary btn--sm" data-opair="${d.id}"
+                  data-serial="${esc(d.serial_number || '')}" data-soft="${esc(d.pclink_software_id || '')}"
+                  data-ip="${esc(d.device_ip || '')}" data-port="${esc(d.device_port || 4443)}"
+                  >${d.pclink_paired_at ? 'Yeniden eşleştir' : 'Eşleştir'}</button>` : ''}
                 <button class="btn btn--ghost btn--sm" data-otest="${d.id}">Bağlantıyı dene</button>
                 <button class="btn btn--ghost btn--sm" data-oedit="${d.id}">Düzenle</button>
                 <button class="btn btn--ghost btn--sm" data-oact="${d.id}" data-to="${d.is_active ? 0 : 1}">
@@ -964,10 +972,85 @@ Screens.add({
         this.okcDraw(); } catch (e) { err(e); }
     });
     $$('[data-odel]').forEach(b => b.onclick = async () => {
-      if (!await confirmBox('Cihaz silinsin mi?', 'Bu cihazla işlem yapıldıysa silinmez, kapatılır.')) return;
+      if (!await confirmBox('Cihaz silinsin mi?',
+        'Gerçek mali işlem yapılmış bir cihaz silinmez, yalnızca kapatılır — mali belgeler '
+        + 'cihaz kaydına bağlıdır. Yalnızca deneme/simülatör kaydı varsa cihaz ve o kayıtlar '
+        + 'birlikte silinir.')) return;
       try { const o = await api('DELETE', `/api/settings/okc/devices/${b.dataset.odel}`);
         toast(o.message, 'ok'); this.okcDraw(); } catch (e) { err(e); }
     });
+    /*
+     * EŞLEŞTİRME — the step that was unreachable.
+     *
+     * POST /devices/:id/pair has existed since the adapter was written and
+     * nothing in the app called it, so a Hugin device could be saved and then
+     * never learn the two things it cannot work without: its own serial number
+     * and the certificate to demand from then on. Both are taught by the
+     * device itself during this handshake.
+     *
+     * Half of it happens on the ÖKC and cannot be done from here, so the
+     * dialog says so rather than leaving somebody pressing a button that
+     * quietly times out.
+     */
+    $$('[data-opair]').forEach(b => b.onclick = () => {
+      const id = b.dataset.opair;
+      const paired = b.textContent.indexOf('Yeniden') >= 0;
+      modal(`<div class="modal__head"><h3>Hugin cihazını eşleştir</h3></div>
+        <div class="modal__body">
+          <div id="prAlert"></div>
+          <div class="alert alert--info">
+            <b>Önce cihazda:</b> Uygulama Merkezi → Entegrasyon → PC Link açın ve
+            sözleşmenizdeki <b>VKN</b>'yi girin. Cihaz kendi IP adresini gösterip bekler.
+            Aşağıya <u>aynı</u> VKN'yi ve o IP adresini yazın.
+          </div>
+          <div class="split-2">
+            <div class="field"><label>VKN <span class="muted">(X-SoftwareId)</span></label>
+              <input class="input mono" id="prSoft" value="${esc(b.dataset.soft)}" placeholder="1234567890"></div>
+            <div class="field"><label>Cihaz IP</label>
+              <input class="input mono" id="prIp" value="${esc(b.dataset.ip)}" placeholder="192.168.1.60"></div>
+            <div class="field"><label>Port</label>
+              <input class="input" type="number" id="prPort" value="${esc(b.dataset.port || 4443)}"></div>
+            ${paired ? `<div class="field"><label>Onay — mevcut seri no</label>
+              <input class="input mono" id="prConfirm" placeholder="${esc(b.dataset.serial)}"></div>` : ''}
+          </div>
+          ${paired ? `<div class="alert alert--warn">Bu cihaz zaten eşleşmiş. Yeniden eşleştirmek
+            sabitlenmiş sertifikayı sıfırlar; devam etmek için mevcut seri numarasını yazın.</div>` : ''}
+        </div>
+        <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
+          <button class="btn btn--primary" id="prOk">Eşleştir</button></div>`, { wide: true });
+
+      $('#prOk').onclick = async () => {
+        const btn = $('#prOk');
+        btn.disabled = true; btn.textContent = 'Cihaz bekleniyor…';
+        try {
+          const out = await api('POST', `/api/okc/devices/${id}/pair`, {
+            software_id: $('#prSoft').value.trim(),
+            device_ip: $('#prIp').value.trim(),
+            device_port: $('#prPort').value ? Number($('#prPort').value) : 4443,
+            confirm_serial: $('#prConfirm') ? $('#prConfirm').value.trim() : undefined,
+          });
+          closeModal();
+          modal(`<div class="modal__head"><h3>Eşleşme tamamlandı</h3></div>
+            <div class="modal__body">
+              <div class="alert alert--info">Cihaz kendini tanıttı. Kasa bundan sonra
+                yalnızca bu sertifikayı kabul eder.</div>
+              <table class="table"><tbody>
+                <tr><td>Mali sicil no</td><td class="mono"><b>${esc(out.serial_number || '')}</b></td></tr>
+                <tr><td>Yazılım sürümü</td><td class="mono">${esc(out.sfa_version || '—')}</td></tr>
+                <tr><td>Sertifika sahibi</td><td class="mono" style="font-size:12px">${esc(out.cert_subject || '—')}</td></tr>
+                <tr><td>Sertifika parmak izi</td><td class="mono" style="font-size:12px">${esc(out.cert_sha256 || '—')}</td></tr>
+              </tbody></table>
+            </div>
+            <div class="modal__foot"><button class="btn btn--primary" data-close="1">Tamam</button></div>`,
+            { wide: true });
+          this.okcDraw();
+        } catch (e) {
+          $('#prAlert').innerHTML = `<div class="alert alert--error">${esc(e.message)}</div>`;
+          btn.disabled = false; btn.textContent = 'Eşleştir';
+        }
+      };
+    });
+
     $$('[data-otest]').forEach(b => b.onclick = async () => {
       b.disabled = true; b.textContent = 'Deneniyor…';
       try {
@@ -979,7 +1062,7 @@ Screens.add({
             ${out.device ? `<pre class="mono muted" style="font-size:12px;white-space:pre-wrap">${
               esc(JSON.stringify(out.device))}</pre>` : ''}
           </div>
-          <div class="modal__foot"><button class="btn btn--primary" onclick="closeModal()">Tamam</button></div>`);
+          <div class="modal__foot"><button class="btn btn--primary" data-close="1">Tamam</button></div>`);
         this.okcDraw();
       } catch (e) { err(e); }
       finally { b.disabled = false; b.textContent = 'Bağlantıyı dene'; }
@@ -990,7 +1073,7 @@ Screens.add({
           <div class="field"><label>Ad</label><input class="input" id="rgName" value="Kasa 1"></div>
           <div class="field"><label>Kod</label><input class="input mono" id="rgCode" value="KASA1"></div>
         </div></div>
-        <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
           <button class="btn btn--primary" id="rgOk">Kaydet</button></div>`);
       $('#rgOk').onclick = async () => {
         try { await api('POST', '/api/settings/okc/registers', { name: $('#rgName').value, code: $('#rgCode').value });
@@ -1045,6 +1128,11 @@ Screens.add({
           <div class="field"><label>Seri no</label><input class="input mono" id="dfSerial" value="${esc(d.serial_number || '')}"></div>
           <div class="field"><label>Cihaz IP</label><input class="input mono" id="dfIp" value="${esc(d.device_ip || '')}" placeholder="192.168.1.60"></div>
           <div class="field"><label>Port</label><input class="input" type="number" id="dfPort" value="${esc(d.device_port || '')}"></div>
+          <div class="field" id="dfSoftRow" style="display:none">
+            <label>Hugin VKN <span class="muted">(X-SoftwareId)</span></label>
+            <input class="input mono" id="dfSoft" value="${esc(d.pclink_software_id || '')}"
+                   placeholder="1234567890">
+          </div>
           <div class="field"><label>Üye işyeri no</label><input class="input" id="dfMerchant" value="${esc(d.merchant_id || '')}"></div>
           <div class="field"><label>Terminal no</label><input class="input" id="dfTerm" value="${esc(d.terminal_id || '')}"></div>
           <div class="field"><label>Kasa</label><select class="input" id="dfReg">
@@ -1053,9 +1141,10 @@ Screens.add({
               ${esc(x.name)}</option>`).join('')}
           </select></div>
         </div>
+        <div id="dfSoftHelp"></div>
         <div id="dfNote"></div>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="dfOk">Kaydet</button></div>`, { wide: true });
 
     /* The note under the form changes with the brand, so the honest status is
@@ -1073,6 +1162,30 @@ Screens.add({
       });
       if (env.selectedOptions[0] && env.selectedOptions[0].disabled) env.value = 'test';
       if (p.defaultPort && !$('#dfPort').value) $('#dfPort').value = p.defaultPort;
+      /*
+       * THE FIELD THAT WAS MISSING.
+       *
+       * Hugin's PC Link sends X-SoftwareId on every request and the device
+       * refuses anything without it. The provider descriptor has asked for
+       * pclink_software_id since the adapter was written; the form never drew
+       * it, so a device could be saved that looked complete and then failed
+       * every call with "X-SoftwareId tanimli degil". Shown only for the
+       * brands whose field list asks for it.
+       */
+      const wantsSoft = Array.isArray(p.fields) && p.fields.indexOf('pclink_software_id') >= 0;
+      const softRow = $('#dfSoftRow');
+      if (softRow) {
+        softRow.style.display = wantsSoft ? '' : 'none';
+        const help = $('#dfSoftHelp');
+        if (help) {
+          help.innerHTML = wantsSoft
+            ? '<div class="alert alert--info">Bu numara, Hugin entegrasyon sözleşmenizdeki '
+              + '<b>VKN</b>\'dir ve <b>cihaza girilen VKN ile aynı olmalıdır</b>. '
+              + 'Her istekte X-SoftwareId başlığında gider; boş bırakılırsa cihaz hiçbir '
+              + 'isteği kabul etmez.</div>'
+            : '';
+        }
+      }
     };
     $('#dfProv').onchange = note;
 
@@ -1114,6 +1227,7 @@ Screens.add({
           device_model: $('#dfModel').value, serial_number: $('#dfSerial').value,
           device_ip: $('#dfIp').value, device_port: $('#dfPort').value ? Number($('#dfPort').value) : null,
           merchant_id: $('#dfMerchant').value, terminal_id: $('#dfTerm').value,
+          pclink_software_id: $('#dfSoft') ? $('#dfSoft').value : '',
           cash_register_id: $('#dfReg').value ? Number($('#dfReg').value) : null,
         });
         closeModal();
@@ -1122,7 +1236,7 @@ Screens.add({
         if (out.warnings && out.warnings.length) {
           modal(`<div class="modal__head"><h3>Cihaz kaydedildi - dikkat</h3></div>
             <div class="modal__body">${out.warnings.map(w => `<div class="alert alert--warn">${esc(w)}</div>`).join('')}</div>
-            <div class="modal__foot"><button class="btn btn--primary" onclick="closeModal()">Anladım</button></div>`);
+            <div class="modal__foot"><button class="btn btn--primary" data-close="1">Anladım</button></div>`);
         } else toast('Cihaz kaydedildi', 'ok');
         this.okcDraw();
       } catch (e) { $('#dfAlert').innerHTML = `<div class="alert alert--error">${esc(e.message)}</div>`; }
@@ -1260,7 +1374,7 @@ Screens.add({
       const file = b.dataset.gz;
       modal(`<div class="modal__head"><h3>Geri yükle</h3></div>
         <div class="modal__body"><p class="muted" id="gzBody">Yedek inceleniyor, veriler okunuyor…</p></div>
-        <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button></div>`);
+        <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button></div>`);
       let p;
       try { p = (await api('POST', '/api/manage/restore/preview', { file })).preview; }
       catch (e) { $('#gzBody').innerHTML = `<div class="alert alert--error">${esc(e.message)}</div>`; return; }
@@ -1290,7 +1404,7 @@ Screens.add({
             <input class="input" id="gzPw" type="password" autocomplete="off"></div>` : ''}
           <div id="gzAlert"></div>
         </div>
-        <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
           ${p.usable ? '<button class="btn btn--danger" id="gzGo" disabled>Geri yükle</button>' : ''}</div>`);
       if (!p.usable) return;
       /* The button stays dead until the password box has something in it: the

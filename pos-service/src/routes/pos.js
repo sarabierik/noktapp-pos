@@ -233,11 +233,58 @@ r.post('/orders/:id/payments', auth.requirePerm('payment.take'), wrap(async (req
   } catch (e) { fail(res, e.message, e.status || 400); }
 }));
 
+/**
+ * Void a payment on the bill.
+ *
+ * A payment the OKC took is not a row on a bill - it is money in a bank batch
+ * and a signed fiscal receipt. Marking such a row void on the till and
+ * stopping there is the silent-divergence bug in its purest form: the guest is
+ * refunded on the screen, the card is still charged, and the day-end balances
+ * because both halves were wrong in the same direction.
+ *
+ * So a fiscal payment is reversed AT THE DEVICE FIRST, and the till row is
+ * only voided once the device has agreed. The device itself decides whether
+ * that reversal is an iptal (not yet financialised) or an iade (a refund
+ * receipt), and the answer is passed back so the cashier is told which piece
+ * of paper to expect.
+ *
+ * `device_done: true` is the recovery case and nothing else: an operator who
+ * has already reversed the transaction on the OKC by hand and needs the till
+ * row to follow. It is audited, because it is the one way the two sides can be
+ * made to disagree on purpose.
+ */
 r.post('/payments/:id/void', auth.requirePerm('payment.void'), wrap(async (req, res) => {
+  const p = await db.one('SELECT * FROM order_payments WHERE id=? AND client_id=?',
+    [req.params.id, req.clientId]);
+  if (!p) return fail(res, 'Odeme bulunamadi', 404);
+
+  let reversal = null;
+  if (p.fiscal_transaction_id && req.body.device_done !== true) {
+    try {
+      reversal = await fiscal.refund(req.clientId, {
+        orderId: p.order_id, txId: p.fiscal_transaction_id,
+        amountMinor: Math.round(Number(p.amount) * 100),
+        reason: req.body.reason || 'Odeme iptali', userId: req.auth.uid,
+      });
+    } catch (e) {
+      return fail(res,
+        'ÖKC işlemi geri alınamadı, ödeme silinmedi: ' + e.message
+        + ' — Cihazda para hâlâ tahsil edilmiş durumda.',
+        e.status || 502, { code: e.code || 'FISCAL_REVERSAL_FAILED' });
+    }
+  } else if (p.fiscal_transaction_id) {
+    await db.exec(
+      `INSERT INTO audit_logs (client_id, actor_client_id, role, action, entity_type, entity_id, after_json, created_at)
+       VALUES (?,?,?,?,?,?,?,NOW())`,
+      [req.clientId, req.auth.uid || null, 'manager', 'fiscal.reversal_declared', 'payment',
+       String(p.id), JSON.stringify({ fiscal_transaction_id: p.fiscal_transaction_id,
+         amount: p.amount, reason: String(req.body.reason || '').slice(0, 190) })]).catch(() => {});
+  }
+
   await payments.voidPayment(req.clientId, req.params.id, {
     userId: req.auth.uid, reason: req.body.reason, ip: req.ip, ua: req.headers['user-agent'],
   });
-  ok(res);
+  ok(res, { reversal });
 }));
 
 /* ------------------------------ ÖKC ------------------------------- */
@@ -269,6 +316,90 @@ r.post('/fiscal/transactions/:id/cancel', auth.requirePerm('fiscal.use'), wrap(a
 r.post('/fiscal/report', auth.requirePerm('day.close'), wrap(async (req, res) => {
   try { ok(res, await fiscal.deviceReport(req.clientId, req.body.kind || 'X')); }
   catch (e) { fail(res, e.message, e.status || 502); }
+}));
+
+/**
+ * Give money back at the device, directly.
+ *
+ * Separate from the payment-void above because the two are asked by different
+ * people for different reasons: that one is "this payment should not be on this
+ * bill", this one is "give the guest his money back". The device decides
+ * whether that comes out as an iptal or an iade and the answer says which.
+ */
+r.post('/fiscal/transactions/:id/refund', auth.requirePerm('payment.void'), wrap(async (req, res) => {
+  try {
+    ok(res, await fiscal.refund(req.clientId, {
+      txId: req.params.id, orderId: req.body.order_id || null,
+      items: req.body.items || [], amountMinor: req.body.amount_minor,
+      reason: req.body.reason || null, userId: req.auth.uid,
+    }));
+  } catch (e) { fail(res, e.message, e.status || 502, e.code || null); }
+}));
+
+/**
+ * The X and Z reports this till has taken on the device.
+ *
+ * Exists because the writing side was broken and nobody could see it: the rows
+ * were never landing and there was no screen that would have shown an empty
+ * list. A record kept where nothing reads it is a record nobody notices the
+ * loss of.
+ */
+r.get('/fiscal/reports', auth.requirePerm('day.close'), wrap(async (req, res) => {
+  const rows = await db.query(
+    `SELECT id, report_type, z_number, device_time, status, created_at
+       FROM fiscal_device_reports
+      WHERE client_id=? AND report_type IN ('X','Z')
+      ORDER BY id DESC LIMIT 40`, [req.clientId]);
+  /*
+   * Whether there is a device at all is part of the answer, not something the
+   * screen should infer from "the request succeeded". The first version of the
+   * report card showed itself whenever this call returned 200 - which it does
+   * for any user who may close the day, device or no device - so a till with no
+   * ÖKC was offered an X and a Z button that could only ever produce an error.
+   */
+  const enabled = await fiscal.isEnabled(req.clientId);
+  const d = enabled ? await fiscal.activeDevice(req.clientId) : null;
+  /*
+   * A simulator is reported as no device at all. It prints nothing and has no
+   * fiscal day, so offering an X and a Z against it would be offering two
+   * buttons that produce a fiction - and the till in a restaurant testing the
+   * flow before its real ÖKC arrives is exactly where that fiction would be
+   * mistaken for a mali rapor.
+   */
+  const real = d && String(d.provider) !== 'simulator' ? d : null;
+  ok(res, {
+    rows,
+    device: real ? {
+      serial_number: real.serial_number, provider: real.provider,
+      production_enabled: !!Number(real.production_enabled),
+      quarantined: !!real.quarantine_reason,
+      armed: !!(await fiscal.armedDevice(req.clientId)),
+    } : null,
+  });
+}));
+
+/** Reverse before the fiscal day closes - no refund receipt is produced. */
+r.post('/fiscal/transactions/:id/void', auth.requirePerm('payment.void'), wrap(async (req, res) => {
+  try {
+    ok(res, await fiscal.voidTransaction(req.clientId, req.params.id, {
+      userId: req.auth.uid, reason: req.body.reason || null }));
+  } catch (e) { fail(res, e.message, e.status || 502, e.code || null); }
+}));
+
+/**
+ * Transactions that can still be given back, for the till's iade screen.
+ *
+ * "Refundable" is not a guess: it is an approved fiscal sale that still has the
+ * references its device needs. A sale taken before those were recorded shows up
+ * here too, with `refundable: false` and the reason, because a cashier hunting
+ * for yesterday's card payment must find it and be told why it cannot be
+ * refunded through the till - rather than not find it and conclude the till
+ * lost it.
+ */
+r.get('/fiscal/refundable', auth.requirePerm('payment.void'), wrap(async (req, res) => {
+  const rows = await fiscal.refundable(req.clientId, {
+    orderId: req.query.order_id || null, days: Number(req.query.days || 7) });
+  ok(res, { rows });
 }));
 
 /* ---------------------------- sadakat ------------------------------ */

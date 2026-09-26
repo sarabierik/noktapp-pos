@@ -85,8 +85,12 @@ class ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
-    if (ok != true) return;
+    /* The sheet is gone by now, but a TextEditingController is a ChangeNotifier
+       and holds its listeners until somebody disposes it. Three of them leak
+       every time this sheet is opened and closed, which on a screen a guest
+       pokes at is a slow, invisible drip. */
     try {
+      if (ok != true) return;
       await Api.instance.saveProfile(
         firstName: first.text.trim(),
         lastName: last.text.trim(),
@@ -99,6 +103,10 @@ class ProfileScreenState extends State<ProfileScreen> {
     } on ApiError catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      first.dispose();
+      last.dispose();
+      email.dispose();
     }
   }
 
@@ -136,14 +144,14 @@ class ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
-    if (ok != true) return;
-    if (next.text.length < 6) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Yeni şifre en az 6 karakter olmalı')));
-      return;
-    }
     try {
+      if (ok != true) return;
+      if (next.text.length < 6) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Yeni şifre en az 6 karakter olmalı')));
+        return;
+      }
       await Api.instance.changePassword(current.text, next.text);
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -151,6 +159,9 @@ class ProfileScreenState extends State<ProfileScreen> {
     } on ApiError catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      current.dispose();
+      next.dispose();
     }
   }
 
@@ -223,8 +234,8 @@ class ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
-    if (go != true) return;
     try {
+      if (go != true) return;
       await Api.instance.deleteAccount(pw.text);
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -233,6 +244,8 @@ class ProfileScreenState extends State<ProfileScreen> {
     } on ApiError catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      pw.dispose();
     }
   }
 

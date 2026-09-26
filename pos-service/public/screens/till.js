@@ -269,7 +269,7 @@ Screens.add({
       : ['Bozukluk takviyesi', 'Devir', 'Kasa transferi'];
     modal(`
       <div class="modal__head"><h3>${out ? 'Kasadan para çıkışı' : 'Kasaya para girişi'}</h3>
-        <div class="spacer"></div><button class="close-x" onclick="closeModal()">✕</button></div>
+        <div class="spacer"></div><button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="field"><label>Tutar (₺)</label>
           <input class="input mono" id="tmAmount" type="number" step="0.01" min="0" placeholder="0,00"></div>
@@ -282,7 +282,7 @@ Screens.add({
         <div id="tmAlert" style="margin-top:14px"></div>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="tmOk">${out ? 'Çıkışı kaydet' : 'Girişi kaydet'}</button>
       </div>`);
     $$('#modal [data-why]').forEach(b => b.onclick = () => { $('#tmReason').value = b.dataset.why; });
@@ -359,7 +359,7 @@ Screens.add({
     modal(`
       <div class="modal__head"><h3>Kasa sayımı</h3><div class="spacer"></div>
         <span class="badge badge--gray">Vardiya #${k.shift.shift_no}</span>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <p class="muted" style="margin-top:0">Çekmecedeki her kupürden kaç adet olduğunu girin.
           Vardiya kapanmaz, sayım kayda geçer.</p>
@@ -375,7 +375,7 @@ Screens.add({
         <div id="tcAlert"></div>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="tcOk">Sayımı kaydet</button>
       </div>`, { wide: true });
 
@@ -412,7 +412,7 @@ Screens.add({
       modal(`
         <div class="modal__head"><h3>Vardiyayı kapat</h3><div class="spacer"></div>
           <span class="badge badge--open">#${k.shift.shift_no}</span>
-          <button class="close-x" onclick="closeModal()">✕</button></div>
+          <button class="close-x" data-close="1">✕</button></div>
         <div class="modal__body">
           <div class="alert alert--info" style="margin-top:0">
             Kasada olması gereken <b>${tillTl(k.expected_cash)}</b>.
@@ -434,7 +434,7 @@ Screens.add({
           <div id="tzAlert" style="margin-top:12px"></div>
         </div>
         <div class="modal__foot">
-          <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+          <button class="btn btn--ghost" data-close="1">Vazgeç</button>
           <button class="btn btn--primary" id="tzOk">Kasayı kapat</button>
         </div>`, { wide: true });
 
@@ -489,7 +489,7 @@ Screens.add({
       modal(`
         <div class="modal__head"><h3>X raporu</h3><div class="spacer"></div>
           <span class="badge badge--open">Vardiya #${x.shift.shift_no}</span>
-          <button class="close-x" onclick="closeModal()">✕</button></div>
+          <button class="close-x" data-close="1">✕</button></div>
         <div class="modal__body">
           <div class="split-3" style="margin-bottom:16px">
             ${tillStat('Tahsilat', tillTl(x.takings), 'vardiya başından beri')}
@@ -520,7 +520,7 @@ Screens.add({
             X raporu vardiyayı kapatmaz, hiçbir sayacı sıfırlamaz.</p>
         </div>
         <div class="modal__foot">
-          <button class="btn btn--ghost" onclick="closeModal()">Kapat</button>
+          <button class="btn btn--ghost" data-close="1">Kapat</button>
           <button class="btn btn--primary" id="txPrint">Yazıcıya gönder</button>
         </div>`, { wide: true });
       $('#txPrint').onclick = async () => {
@@ -541,7 +541,7 @@ Screens.add({
   tillDrawerDialog() {
     modal(`
       <div class="modal__head"><h3>Çekmeceyi aç</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <p class="muted" style="margin-top:0">Satış olmadan açılan her çekmece adınızla kayda geçer.</p>
         <div class="field"><label>Neden <span style="color:var(--red)">(zorunlu)</span></label>
@@ -554,7 +554,7 @@ Screens.add({
         <div id="tdAlert"></div>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="tdOk">Çekmeceyi aç</button>
       </div>`);
     $$('#modal [data-why]').forEach(b => b.onclick = () => { $('#tdReason').value = b.dataset.why; });
@@ -697,7 +697,7 @@ Screens.add({
         <div class="modal__head"><h3>Vardiya #${k.shift.shift_no} · ${tillDay(k.shift.business_date)}</h3>
           <div class="spacer"></div>
           <span class="badge ${closed ? 'badge--closed' : 'badge--open'}">${closed ? 'kapalı' : 'açık'}</span>
-          <button class="close-x" onclick="closeModal()">✕</button></div>
+          <button class="close-x" data-close="1">✕</button></div>
         <div class="modal__body">
           <div class="row" style="gap:18px;margin-bottom:14px;flex-wrap:wrap">
             <span class="muted">Açan <b>${esc(k.shift.opened_by_name || '—')}</b> · ${tillWhen(k.shift.opened_at)}</span>
@@ -773,7 +773,7 @@ Screens.add({
             </tbody></table></div>` : ''}
         </div>
         <div class="modal__foot">
-          <button class="btn btn--ghost" onclick="closeModal()">Kapat</button>
+          <button class="btn btn--ghost" data-close="1">Kapat</button>
         </div>`, { wide: true });
     } catch (e) { err(e); }
   },

@@ -6,6 +6,9 @@ const pnl = require('../modules/pnl');
 const printing = require('../print');
 const report = require('../report');
 const { ok, fail, wrap } = require('../util/http');
+const fiscal = require('../fiscal');
+const db = require('../db');
+const log = require('../logger');
 
 const r = express.Router();
 r.use(auth.requireAuth);
@@ -32,13 +35,57 @@ r.post('/z/print', auth.requirePerm('report.view'), wrap(async (req, res) => {
   ok(res);
 }));
 
+/*
+ * DAY END, WITH THE DEVICE'S DAY IN IT.
+ *
+ * This used to close the TILL's day and print the till's own Z on the
+ * kitchen printer, and never say a word to the OKC. In a restaurant with a
+ * Yeni Nesil yazarkasa that is the wrong half: the device's Z is the one the
+ * tax office means. A till whose figures are closed while the device's fiscal
+ * day is still open has not closed anything that matters.
+ *
+ * ORDER IS DELIBERATE. The device Z goes FIRST, because it is the
+ * irreversible half - it advances counters nobody can wind back. If it fails,
+ * nothing here has been mutated and the day is simply not closed. Closing the
+ * till first and then discovering the device refused would leave the two
+ * halves disagreeing with no way back.
+ *
+ * And it can be skipped, because a device that is unreachable at midnight
+ * must not trap a restaurant that has to close. `skip_fiscal` is an explicit
+ * decision by a person with day.close, it is written to the audit log with
+ * its reason, and it is reported back rather than swallowed.
+ */
 r.post('/close-day', auth.requirePerm('day.close'), wrap(async (req, res) => {
+  let fiscalReport = null;
   try {
+    const dev = await fiscal.armedDevice(req.clientId);
+    if (dev && req.body.skip_fiscal !== true) {
+      try {
+        const z = await fiscal.deviceReport(req.clientId, 'Z');
+        fiscalReport = { taken: true, device: dev.serial_number, raw: z.raw || null };
+      } catch (e) {
+        return fail(res,
+          'ÖKC gün sonu (Z) alınamadı, gün kapatılmadı: ' + e.message
+          + ' — Cihazın mali günü hâlâ açık. Cihazı kontrol edip tekrar deneyin.',
+          e.status || 502, { code: 'FISCAL_Z_FAILED' });
+      }
+    } else if (dev) {
+      fiscalReport = { taken: false, skipped: true, device: dev.serial_number,
+        reason: String(req.body.skip_reason || '').slice(0, 190) };
+      log.warn('fiscal', 'Gün sonu ÖKC Z raporu ALINMADAN kapatıldı', {
+        device: dev.serial_number, by: req.auth.uid, reason: fiscalReport.reason });
+      await db.exec(
+        `INSERT INTO audit_logs (client_id, actor_client_id, role, action, entity_type, entity_id, after_json, created_at)
+         VALUES (?,?,?,?,?,?,?,NOW())`,
+        [req.clientId, req.auth.uid || null, 'manager', 'fiscal.z_skipped', 'day',
+         String(req.body.date || ''), JSON.stringify(fiscalReport)]).catch(() => {});
+    }
+
     const z = await reports.closeDay(req.clientId, {
       userId: req.auth.uid, declaredCash: req.body.declared_cash || 0, declaredCard: req.body.declared_card || 0,
     });
     if (req.body.print !== false) await printing.queueReport(req.clientId, z, 'Z');
-    ok(res, { report: z });
+    ok(res, { report: z, fiscal: fiscalReport });
   } catch (e) { fail(res, e.message, e.status || 400); }
 }));
 

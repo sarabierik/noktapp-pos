@@ -1,0 +1,96 @@
+# NOKTA - the guest app.
+#
+# Two jobs, and they are deliberately not "build the Android app": that happens
+# in Android Studio on the machine that has the keystore. What runs here is the
+# half a compiler can answer without any signing at all.
+#
+#   analiz   every push. Ubuntu, a couple of minutes, free minutes on a private
+#            repo. It is the Dart compiler's opinion of the code, which is the
+#            thing that otherwise costs an evening of Android Studio round
+#            trips: a typo in a screen is found here, before Gradle is even
+#            started.
+#
+#   ios      manual only. macOS runners bill at TEN TIMES the rate of Linux on
+#            a private repo, so this does not fire on pushes - run it from the
+#            Actions tab when the iOS side actually changed. It builds the app
+#            unsigned, which proves the Dart and the iOS project are correct.
+#            It cannot produce anything installable: that needs the Apple
+#            Developer account and a Mac, and nothing here can stand in for it.
+
+name: NOKTA (Flutter)
+
+on:
+  push:
+    paths:
+      - 'nokta/**'
+      - '.github/workflows/nokta.yml'
+  pull_request:
+    paths:
+      - 'nokta/**'
+  workflow_dispatch:
+
+jobs:
+  analiz:
+    name: Dart analizi ve sinamalar
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: nokta
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Surumler
+        run: flutter --version
+
+      # No `flutter create` here on purpose. Analysis and the unit tests read
+      # lib/ and test/ only - the android/ and ios/ folders are a build-time
+      # concern, and generating them would just be two minutes of nothing.
+      - name: Bagimliliklar
+        run: flutter pub get
+
+      - name: Analiz
+        run: flutter analyze
+
+      - name: Sinamalar
+        run: flutter test --reporter expanded
+
+  ios:
+    name: iOS derleniyor mu (imzasiz)
+    runs-on: macos-latest
+    if: github.event_name == 'workflow_dispatch'
+    defaults:
+      run:
+        working-directory: nokta
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # ios/ holds only Info.plist.additions - the record of what the plist
+      # must say. The Xcode project itself is generated, here and on the Mac,
+      # so it is never a stale thing in the repo that has to be maintained.
+      - name: iOS projesi uretiliyor
+        run: flutter create --org com.noktapp --project-name nokta --platforms=ios .
+
+      - name: Info.plist anahtarlari
+        run: bash tools/ios-izinler.sh
+
+      - name: Bagimliliklar
+        run: flutter pub get
+
+      - name: Derle (imzasiz)
+        run: flutter build ios --release --no-codesign
+
+      - name: Ne uretildi
+        run: |
+          echo "--- build/ios/iphoneos ---"
+          ls -la build/ios/iphoneos || true
+          du -sh build/ios/iphoneos/Runner.app 2>/dev/null || true

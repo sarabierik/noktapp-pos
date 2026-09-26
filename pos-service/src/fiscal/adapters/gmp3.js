@@ -189,6 +189,10 @@ class Gmp3Adapter extends FiscalAdapter {
     return { ok: true, raw: r };
   }
 
+  /* GMP-3 states 40 lines per receipt. This is where that number belongs -
+     it is Ingenico's, not every ÖKC's. */
+  get maxSaleLines() { return 40; }
+
   async refund(refund) {
     this.assertVerified('iade');
     const r = await this.request('REFUND', {
@@ -196,7 +200,7 @@ class Gmp3Adapter extends FiscalAdapter {
       originalReceiptNo: refund.originalReceiptNo,
       originalZNo: refund.originalZNo,
       items: (refund.items || []).map(i => ({
-        name: i.name, quantity: i.qty, unitPrice: i.unitPriceMinor,
+        name: i.name, quantity: i.qty, unitPrice: Number(i.unitPriceMinor),
         vatRate: i.vatRate, department: Number(i.department),
       })),
       total: refund.totalMinor,

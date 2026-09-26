@@ -72,7 +72,23 @@ class Api {
       try {
         final req = http.Request(method, uri)..headers.addAll(headers);
         if (body != null) req.body = jsonEncode(body);
-        res = await http.Response.fromStream(await client.send(req))
+        /*
+         * THE TIMEOUT HAS TO COVER THE SEND, WHICH IS THE PART THAT HANGS.
+         *
+         * This used to read
+         *     Response.fromStream(await client.send(req)).timeout(...)
+         * and the `await client.send(req)` inside the parentheses runs to
+         * completion BEFORE .timeout() is ever attached. Connecting and
+         * sending - a phone on a lift's worth of signal, a captive portal
+         * that accepts the connection and then says nothing - was therefore
+         * not covered at all, and the guest watched a spinner with no end.
+         * The twenty seconds only ever guarded reading the body back, which
+         * is the fast half.
+         *
+         * Wrapping the whole thing is the fix, and it has to be one future.
+         */
+        res = await Future(() async =>
+                http.Response.fromStream(await client.send(req)))
             .timeout(const Duration(seconds: 20));
       } finally {
         client.close();

@@ -595,7 +595,7 @@ Screens.add({
   finCloseDialog(date) {
     modal(`
       <div class="modal__head"><h3>Gün sonu — ${esc(date)}</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="alert alert--info">Gün kapatıldıktan sonra o ana kadar kapanmış adisyonlar
           silinemez veya geri alınamaz. Düzeltmek için günü yeniden açmanız gerekir.</div>
@@ -610,7 +610,7 @@ Screens.add({
         <div class="field"><label>Not (isteğe bağlı)</label><input class="input" id="cdNote"></div>
         <div id="cdAlert"></div>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--dark" id="cdOk">Günü kapat</button></div>`);
     $('#cdOk').onclick = async () => {
       try {
@@ -642,13 +642,13 @@ Screens.add({
   finMailDialog(date) {
     modal(`
       <div class="modal__head"><h3>Gün sonu özetini gönder</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <p class="muted" style="margin-top:0">${esc(date)} gününün özeti e-posta olarak gönderilir.</p>
         <div class="field"><label>Alıcı e-posta</label><input class="input" id="dmTo" type="email"></div>
         <div id="dmAlert"></div>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="dmOk">Gönder</button></div>`);
     $('#dmOk').onclick = async () => {
       try {
@@ -661,9 +661,9 @@ Screens.add({
   /** X raporu: the same figures as the Z, mid-shift, and nothing is closed. */
   async finXReport() {
     modal(`<div class="modal__head"><h3>X raporu</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body" id="xrBody"><div class="empty">Hesaplanıyor…</div></div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Kapat</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Kapat</button>
         <button class="btn btn--primary" id="xrPrint">Yazdır</button></div>`, { wide: true });
     let x;
     try { x = (await api('GET', '/api/finance/x-report')).report; }
@@ -872,7 +872,7 @@ Screens.add({
 
     modal(`
       <div class="modal__head"><h3>Kalıcı sil</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="alert alert--error" style="margin-bottom:14px">
           <b>${ids.length} adisyon${money ? ' · ' + fmoney(money) : ''}</b> sistemden
@@ -891,7 +891,7 @@ Screens.add({
         <div class="field" style="margin-bottom:0"><label>Onaylamak için <b>SİL</b> yazın</label>
           <input class="input mono" id="pgWord" autocomplete="off" placeholder="SİL"></div>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--danger" id="pgOk" disabled>Kalıcı sil</button></div>`);
 
     /* Accept both spellings: a Turkish keyboard gives SİL, an English one SIL,
@@ -959,7 +959,7 @@ Screens.add({
    */
   async finOrderModal(id) {
     modal(`<div class="modal__head"><h3>Adisyon detayı</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body" id="odBody"><div class="empty">Yükleniyor…</div></div>`, { wide: true });
     let r;
     try { r = await api('GET', `/api/finance/transactions/${id}`); }

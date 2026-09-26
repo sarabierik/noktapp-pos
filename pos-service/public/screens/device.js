@@ -250,7 +250,7 @@ Screens.add({
           garson ekleyin.</div>`}
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="devPairGo">Karekodu göster</button>
       </div>`);
 
@@ -367,7 +367,7 @@ Screens.add({
         <div class="field"><label>Ad</label><input class="input" id="devName" value="${esc(name)}" maxlength="120"></div>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="devNameOk">Kaydet</button></div>`);
     $('#devName').focus();
     $('#devNameOk').onclick = async () => {
@@ -778,7 +778,7 @@ Screens.add({
           Şubenin kendi eklediği ürünler olduğu gibi kalır.</p>
       </div>
       <div class="modal__foot">
-        <button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+        <button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="devBranchOk">Bağlan</button></div>`);
     $('#devBranchCode').focus();
     $('#devBranchOk').onclick = async (e) => {
@@ -932,7 +932,7 @@ Screens.add({
       try { pretty = JSON.stringify(JSON.parse(row.detail), null, 2); } catch (_) { /* not JSON, show as is */ }
       modal(`
         <div class="modal__head"><h3>${esc(row.message)}</h3><div class="spacer"></div>
-          <button class="close-x" onclick="closeModal()">✕</button></div>
+          <button class="close-x" data-close="1">✕</button></div>
         <div class="modal__body">
           <div class="muted" style="margin-bottom:10px;font-size:13px">
             ${devWhen(row.created_at)} · ${esc(row.area)} · ${esc(row.level)}</div>

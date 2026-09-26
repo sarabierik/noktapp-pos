@@ -283,13 +283,13 @@ Screens.add({
     const z = zone || {};
     modal(`
       <div class="modal__head"><h3>${z.id ? 'Alanı düzenle' : 'Yeni alan'}</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="field"><label>Alan adı</label>
           <input class="input" id="zfName" value="${esc(z.name || '')}" placeholder="Salon, Teras, Bahçe…"></div>
         <div id="zfAlert"></div>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="zfSave">Kaydet</button></div>`);
     $('#zfSave').onclick = async () => {
       try {
@@ -304,7 +304,7 @@ Screens.add({
     const zones = this._zones || [];
     modal(`
       <div class="modal__head"><h3>${t.id ? 'Masayı düzenle' : 'Yeni masa'}</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="split-2">
           <div class="field"><label>Masa adı</label>
@@ -323,7 +323,7 @@ Screens.add({
           <span class="muted" style="font-size:12.5px">Yenilenince basılı kart çalışmaz.</span></div>` : ''}
         <div id="tfAlert"></div>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="tfSave">Kaydet</button></div>`);
     if ($('#tfQr')) {
       $('#tfQr').onclick = async () => {
@@ -348,7 +348,7 @@ Screens.add({
     const zones = this._zones || [];
     modal(`
       <div class="modal__head"><h3>Toplu masa oluştur</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <p class="muted" style="margin-top:0">Ön ek ve numara aralığı verin: <b>Masa 1</b> … <b>Masa 20</b> gibi.</p>
         <div class="split-2">
@@ -364,7 +364,7 @@ Screens.add({
         </div>
         <div id="bfAlert"></div>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="bfSave">Oluştur</button></div>`);
     $('#bfSave').onclick = async () => {
       try {
@@ -576,7 +576,7 @@ Screens.add({
     return new Promise((resolve) => {
       modal(`
         <div class="modal__head"><h3>${esc(title)}</h3><div class="spacer"></div>
-          <button class="close-x" onclick="closeModal()">✕</button></div>
+          <button class="close-x" data-close="1">✕</button></div>
         <div class="modal__body">
           <div class="plan__grid" style="padding:0;grid-template-columns:repeat(auto-fill,minmax(130px,1fr))">
             ${tables.map(t => `<button class="table-card${t.open_bills > 0 ? ' is-busy' : ''}" data-pk="${t.id}">
@@ -607,7 +607,7 @@ Screens.add({
     const time = r.starts_at ? String(r.starts_at).slice(11, 16) : '19:00';
     modal(`
       <div class="modal__head"><h3>${r.id ? 'Rezervasyonu düzenle' : 'Yeni rezervasyon'}</h3><div class="spacer"></div>
-        <button class="close-x" onclick="closeModal()">✕</button></div>
+        <button class="close-x" data-close="1">✕</button></div>
       <div class="modal__body">
         <div class="split-2">
           <div class="field"><label>Misafir adı</label>
@@ -633,7 +633,7 @@ Screens.add({
         <div id="rfWarn"></div>
         <div id="rfAlert"></div>
       </div>
-      <div class="modal__foot"><button class="btn btn--ghost" onclick="closeModal()">Vazgeç</button>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Vazgeç</button>
         <button class="btn btn--primary" id="rfSave">Kaydet</button></div>`);
 
     let forced = false;
