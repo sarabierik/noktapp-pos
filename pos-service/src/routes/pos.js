@@ -346,7 +346,7 @@ r.post('/fiscal/transactions/:id/refund', auth.requirePerm('payment.void'), wrap
  */
 r.get('/fiscal/reports', auth.requirePerm('day.close'), wrap(async (req, res) => {
   const rows = await db.query(
-    `SELECT id, report_type, z_number, device_time, status, created_at
+    `SELECT id, report_type, z_number, device_time, status, note, created_at
        FROM fiscal_device_reports
       WHERE client_id=? AND report_type IN ('X','Z')
       ORDER BY id DESC LIMIT 40`, [req.clientId]);
@@ -376,6 +376,48 @@ r.get('/fiscal/reports', auth.requirePerm('day.close'), wrap(async (req, res) =>
       armed: !!(await fiscal.armedDevice(req.clientId)),
     } : null,
   });
+}));
+
+/**
+ * One report, in full, as the device sent it.
+ *
+ * The Z envelope carries the figures an owner actually reconciles against -
+ * the device's own cumulative fiscal-memory total, its VAT, its document
+ * counters and a breakdown per tender - and all of it was going into a blob
+ * nobody could open without a database client.
+ */
+r.get('/fiscal/reports/:id', auth.requirePerm('day.close'), wrap(async (req, res) => {
+  const row = await db.one(
+    'SELECT * FROM fiscal_device_reports WHERE id=? AND client_id=?',
+    [req.params.id, req.clientId]);
+  if (!row) return fail(res, 'Rapor bulunamadi', 404);
+  let raw = {};
+  try { raw = JSON.parse(row.raw || '{}'); } catch (_) { raw = {}; }
+  ok(res, {
+    report: {
+      id: row.id, type: row.report_type, z_number: row.z_number,
+      device_time: row.device_time, created_at: row.created_at, status: row.status,
+    },
+    header: fiscal.reportHeader(raw),
+    totals: fiscal.reportTotals(raw),
+  });
+}));
+
+/**
+ * The last conversations with the fiscal device.
+ *
+ * Reachable from the ÖKC screen so that "cihaz reddetti" stops being the end
+ * of the story. Every row here is one request or one reply, with the device's
+ * own error code where there was one.
+ */
+r.get('/fiscal/device-log', auth.requirePerm('day.close'), wrap(async (req, res) => {
+  const rows = await db.query(
+    `SELECT id, direction, operation, http_status, duration_ms, payload_masked, created_at
+       FROM fiscal_provider_logs
+      WHERE client_id=?
+      ORDER BY id DESC LIMIT ?`,
+    [req.clientId, Math.max(10, Math.min(200, Number(req.query.limit) || 60))]);
+  ok(res, { rows });
 }));
 
 /** Reverse before the fiscal day closes - no refund receipt is produced. */

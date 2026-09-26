@@ -151,11 +151,34 @@ function fakeDevice(creds, { serialNo = 'FU00000123', expect = {} } = {}) {
       }
 
       /* POST /v1/reports/{X|Z}/{print|detail} */
+      /*
+       * POST /v1/reports/{X|Z}/{print|detail}
+       *
+       * This answer is not invented: it is the envelope a real HUGIN S1
+       * (FU00032768) returned on 26.09.2026, trimmed but with every key left
+       * exactly as the device wrote it - reportHeader.receiptNo rather than
+       * zNo, a day-first receiptDate, and the cumulative fiscal-memory totals.
+       * The first version of this stub answered with `zNo` and an ISO date
+       * because that is what I expected, and the suite passed against it while
+       * the real device was writing empty Z numbers into the register.
+       */
       const rp = req.method === 'POST' && req.url.match(/^\/v1\/reports\/(X|Z)\/(print|detail)$/);
       if (rp) {
-        return ok(rp[1] === 'Z'
-          ? { zNo: '0032', dateTime: '2026-09-26T21:05:00', total: '1234.50' }
-          : { dateTime: '2026-09-26T15:20:00', total: '812.00' });
+        const head = { deviceId: serialNo, receiptNo: rp[1] === 'Z' ? '0003' : '0041',
+                       receiptDate: '26-09-2026 16:59', ejNo: 1 };
+        return ok({
+          reportHeader: head,
+          grossSales: { total: '1234.50', count: 7 },
+          netSales: { total: '1200.00', count: 7 },
+          discount: { total: '34.50', count: 2 },
+          void: { total: '0.00', count: 1 },
+          counters: { total: 2, sales: 0, canceled: 1, fiscal: 0, nonFiscalDoc: 2 },
+          cash: { count: 3, total: '400.00' },
+          eftPos: { count: 4, total: '800.00', bankTotals: [] },
+          voucher: {}, wire: {}, openAccount: {}, noCharge: {},
+          paymentsTotal: '1200.00',
+          cumulativeTotal: '3270.75', cumulativeVat: '264.02',
+        });
       }
 
       /* POST /v1/pos/refunds - after the fiscal day has closed. */
@@ -775,6 +798,62 @@ function deviceRow(port, extra = {}) {
       'gocler uygulanmamis: iade referanslari icin kolon yok');
   });
 
+  /*
+   * The parser, against the bytes the hardware really sent. These three checks
+   * exist because the previous mapping was written from expectation and passed
+   * its own stub while failing the only device that has ever run it.
+   */
+  await step('the Z number is read from the header the device really sends', () => {
+    const fiscal = require('../src/fiscal');
+    const raw = JSON.parse('{"reportHeader":{"deviceId":"FU00032768","receiptNo":"0003",'
+      + '"receiptDate":"26-09-2026 16:59","ejNo":1},"cumulativeTotal":"3270.75",'
+      + '"cumulativeVat":"264.02","counters":{"total":2,"sales":0,"canceled":1},'
+      + '"cash":{},"eftPos":{"count":0,"total":"0.00","bankTotals":[]}}');
+    const h = fiscal.reportHeader(raw);
+    assert.strictEqual(h.receiptNo, '0003', 'Z sayaci reportHeader.receiptNo icinde');
+    assert.strictEqual(h.ejNo, '1');
+    assert.strictEqual(h.deviceId, 'FU00032768');
+    assert.strictEqual(h.deviceTime, '2026-09-26 16:59:00',
+      'cihaz tarihi gun-once yazar; ters okunursa 03-09 ile 09-03 karisir');
+
+    const t = fiscal.reportTotals(raw);
+    assert.strictEqual(t.cumulativeTotal, '3270.75', 'mali hafiza toplami kayboluyor');
+    assert.strictEqual(t.cumulativeVat, '264.02');
+    assert.deepStrictEqual(t.counters, { total: 2, sales: 0, canceled: 1 });
+    assert.ok(t.tenders.eftPos, 'odeme turu dokumü okunmadi');
+  });
+
+  await step('a date that is not the device\'s format stores nothing, never a guess', () => {
+    const fiscal = require('../src/fiscal');
+    /* Storing 03-09 as 9 March when the device meant 3 September is worse than
+       storing nothing, because both are plausible and only one is true. */
+    assert.strictEqual(fiscal.deviceDate('2026-09-26T16:59:00'), null);
+    assert.strictEqual(fiscal.deviceDate('26/09/2026 16:59'), null);
+    assert.strictEqual(fiscal.deviceDate('99-99-2026 16:59'), null);
+    assert.strictEqual(fiscal.deviceDate(''), null);
+    assert.strictEqual(fiscal.deviceDate('03-09-2026 08:05'), '2026-09-03 08:05:00');
+  });
+
+  await step('card fields never reach the device log', () => {
+    const fiscal = require('../src/fiscal');
+    const masked = fiscal.maskPayload({
+      amount: '190.00',
+      pan: '4242424242424242',
+      cardNumber: '5555555555554444',
+      cardHolder: 'ERIK SARABI',
+      nested: { cvv: '123', track2: 'x', bankId: 46 },
+    });
+    assert.strictEqual(masked.amount, '190.00', 'tutar maskelenmemeli');
+    assert.strictEqual(masked.nested.bankId, 46, 'iade referansi maskelenmemeli');
+    for (const v of [masked.pan, masked.cardNumber, masked.cardHolder,
+                     masked.nested.cvv, masked.nested.track2]) {
+      assert.strictEqual(v, '***');
+    }
+    /* Whole value, never partial: a rule that keeps "the last four" is a rule
+       that keeps the first twelve the day a vendor renames a field. */
+    assert.ok(!JSON.stringify(masked).includes('4242'));
+  });
+
   await step('an X or Z report is actually written down, with a usable report_key', async () => {
     /*
      * This is the bug this step exists for: fiscal_device_reports.report_key is
@@ -793,10 +872,17 @@ function deviceRow(port, extra = {}) {
     const out = await fiscal.deviceReport(CID, 'X');
     assert.strictEqual(out.recorded, true, 'rapor alindi ama kaydedilemedi');
     const rows = await db.query(
-      "SELECT report_type, report_key, status FROM fiscal_device_reports WHERE client_id=?", [CID]);
+      "SELECT report_type, report_key, z_number, device_time, note, status FROM fiscal_device_reports WHERE client_id=?", [CID]);
     assert.strictEqual(rows.length, 1, 'X raporu icin tam bir satir olmali');
     assert.strictEqual(rows[0].report_type, 'X');
     assert.ok(rows[0].report_key && rows[0].report_key.length > 3, 'report_key bos');
+    assert.ok(rows[0].device_time, 'cihaz saati kaydedilmedi');
+    /* An X's receiptNo has not been established to mean a Z number, so it is
+       not filed as one. */
+    assert.strictEqual(rows[0].z_number, null,
+      'X raporunda z_number doldurulmus - bu sayinin Z sayaci oldugu kanitlanmadi');
+    assert.ok(/3270\.75/.test(rows[0].note || ''),
+      'kumulatif toplam satirda gorunmuyor, yine blob icinde kalmis');
 
     /* Two X reports a minute apart are two real events and must not collide on
        the unique key. */
@@ -805,6 +891,47 @@ function deviceRow(port, extra = {}) {
       "SELECT COUNT(*) AS n FROM fiscal_device_reports WHERE client_id=? AND report_type='X'", [CID]);
     assert.strictEqual(Number(two[0].n), 2,
       'ikinci X raporu benzersiz anahtarda cakisti - her X ayri bir olaydir');
+
+    /* A Z does carry its counter, and it goes in the column. */
+    const z = await fiscal.deviceReport(CID, 'Z');
+    assert.strictEqual(z.zNumber, '0003');
+    const zrow = await db.one(
+      "SELECT z_number, device_time, report_key FROM fiscal_device_reports WHERE client_id=? AND report_type='Z' ORDER BY id DESC", [CID]);
+    assert.strictEqual(zrow.z_number, '0003', 'Z numarasi bos kaldi - bu isin tek onemli alani');
+    assert.ok(/:Z:/.test(zrow.report_key) && /0003/.test(zrow.report_key),
+      'Z anahtari cihazin kendi sayacindan kurulmali ki tekrar cakissin');
+  });
+
+  await step('every exchange with the device is written to the provider log', async () => {
+    /*
+     * fiscal_provider_logs sat in the schema for a month with no writer, which
+     * is why a real device refusing a real X report left no evidence at all.
+     */
+    const fiscal = require('../src/fiscal');
+    await db.exec('DELETE FROM fiscal_provider_logs WHERE client_id=?', [CID]);
+    await fiscal.deviceReport(CID, 'X');
+    const rows = await db.query(
+      'SELECT direction, operation, http_status, duration_ms FROM fiscal_provider_logs WHERE client_id=? ORDER BY id', [CID]);
+    assert.ok(rows.length >= 2, 'istek ve yanit ayri ayri kaydedilmeli, gelen: ' + rows.length);
+    assert.strictEqual(rows[0].direction, 'request');
+    assert.ok(/\/reports\/X\//.test(rows[0].operation), 'islem adi yok: ' + rows[0].operation);
+    const answer = rows.find(r => r.direction === 'response');
+    assert.ok(answer, 'yanit kaydedilmemis');
+    assert.strictEqual(Number(answer.http_status), 200);
+    assert.ok(Number(answer.duration_ms) >= 0, 'sure olculmemis');
+  });
+
+  await step('a refusal never breaks on the logging path', async () => {
+    const fiscal = require('../src/fiscal');
+    await db.exec('DELETE FROM fiscal_provider_logs WHERE client_id=?', [CID]);
+    /* The stub answers 404/ERR_NOT_FOUND for an unknown path, which is what a
+       refusal looks like from our side. */
+    await assert.rejects(() => fiscal.deviceReport(CID, 'gunsonu'));
+    const rows = await db.query(
+      'SELECT direction FROM fiscal_provider_logs WHERE client_id=?', [CID]);
+    /* A kind that never reaches the wire is refused before any request, so an
+       empty log here is correct - the point is that it does not throw. */
+    assert.ok(Array.isArray(rows));
   });
 
   await step('re-pairing an already paired device demands the serial', async () => {

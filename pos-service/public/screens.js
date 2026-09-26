@@ -1537,7 +1537,8 @@ Object.assign(Screens, {
       <div class="card" style="margin-top:14px" id="rpOkcCard" hidden>
         <div class="card__head"><h3>ÖKC (yazarkasa) raporları</h3><div class="spacer"></div>
           <button class="btn btn--ghost btn--sm" id="rpOkcX">ÖKC X raporu</button>
-          <button class="btn btn--ghost btn--sm" id="rpOkcZ">ÖKC Z (mali gün sonu)</button></div>
+          <button class="btn btn--ghost btn--sm" id="rpOkcZ">ÖKC Z (mali gün sonu)</button>
+          <button class="btn btn--ghost btn--sm" id="rpOkcLog">Cihaz günlüğü</button></div>
         <div class="card__body">
           <div class="alert alert--info" style="margin-bottom:10px">
             Bu iki rapor <b>cihazdan</b> alınır ve cihazın kendi kâğıdına basılır.
@@ -1676,16 +1677,25 @@ Object.assign(Screens, {
 
     const draw = () => {
       $('#rpOkcOut').innerHTML = notice + (rows.length
-        ? `<table class="tbl"><thead><tr><th>Rapor</th><th>Z no</th><th>Cihaz saati</th><th>Alındı</th></tr></thead>
-           <tbody>${rows.map(r => `<tr>
+        ? `<table class="tbl"><thead><tr><th>Rapor</th><th>Z no</th><th>Cihaz saati</th>
+             <th>Cihaz toplamları</th><th>Alındı</th></tr></thead>
+           <tbody>${rows.map(r => `<tr data-rapor="${r.id}" style="cursor:pointer">
              <td><b>${esc(r.report_type)}</b></td>
              <td class="mono">${esc(r.z_number || '—')}</td>
              <td class="mono">${esc(r.device_time || '—')}</td>
+             <td class="muted" style="font-size:12px">${esc(r.note || '—')}</td>
              <td class="mono">${esc(String(r.created_at || '').replace('T', ' ').slice(0, 19))}</td></tr>`).join('')}
-           </tbody></table>`
+           </tbody></table>
+           <div class="muted" style="font-size:12px;margin-top:6px">Satıra tıklayın: cihazın gönderdiği
+             bütün rakamlar açılır.</div>`
         : '<div class="empty">Bu cihazdan henüz X veya Z raporu alınmamış.</div>');
     };
-    draw();
+    const bindRows = () => {
+      for (const tr of $$('#rpOkcOut tr[data-rapor]')) {
+        tr.onclick = () => this.okcRaporDetay(tr.getAttribute('data-rapor'));
+      }
+    };
+    draw(); bindRows();
 
     const take = async (kind, btn) => {
       btn.disabled = true;
@@ -1704,13 +1714,14 @@ Object.assign(Screens, {
             + $('#rpOkcOut').innerHTML;
         }
         rows = (await api('GET', '/api/pos/fiscal/reports')).rows || [];
-        draw();
+        draw(); bindRows();
       } catch (e) {
         $('#rpOkcOut').innerHTML = `<div class="alert alert--error">${esc(e.message)}</div>`
           + $('#rpOkcOut').innerHTML;
       } finally { btn.disabled = false; btn.textContent = was; }
     };
 
+    $('#rpOkcLog').onclick = () => this.okcCihazGunlugu();
     $('#rpOkcX').onclick = (e) => take('X', e.currentTarget);
     $('#rpOkcZ').onclick = async (e) => {
       const btn = e.currentTarget;
@@ -1718,6 +1729,109 @@ Object.assign(Screens, {
         'Cihazın mali günü kapanacak ve bu geri alınamaz. Devam edilsin mi?', true)) return;
       await take('Z', btn);
     };
+  },
+
+  /**
+   * One report, opened out.
+   *
+   * The device sends far more than a Z number: its own cumulative fiscal-memory
+   * total, its VAT, how many documents it counted and what came in under each
+   * tender. An owner reconciling the books needs the cumulative figure, and
+   * until now it existed only inside a JSON column.
+   */
+  async okcRaporDetay(id) {
+    let d = null;
+    try { d = await api('GET', `/api/pos/fiscal/reports/${id}`); }
+    catch (e) { return err(e); }
+    const t = d.totals || {}, h = d.header || {};
+    const para = (v) => (v === null || v === undefined ? '—' : tl(Number(v)) + ' ₺');
+    const satir = (ad, deger) => `<tr><td>${esc(ad)}</td><td class="right mono">${deger}</td></tr>`;
+    const TENDER = { cash: 'Nakit', eftPos: 'Kredi kartı', voucher: 'Yemek kartı',
+      wire: 'Havale', openAccount: 'Açık hesap', check: 'Çek', noCharge: 'İkram',
+      loyalty: 'Puan', gift: 'Hediye kartı', mobile: 'Mobil', vpos: 'Sanal POS',
+      eMoney: 'E-para', charity: 'Bağış', transportCard: 'Ulaşım kartı',
+      coPay: 'Katkı payı', dutyFree: 'Duty free' };
+    const tenders = Object.entries(t.tenders || {})
+      .filter(([, v]) => v && (Number(v.count) > 0 || (v.total && Number(v.total) !== 0)));
+
+    modal(`
+      <div class="modal__head"><h3>${esc(d.report.type)} raporu${d.report.z_number ? ' · Z ' + esc(d.report.z_number) : ''}</h3>
+        <div class="spacer"></div><button class="close-x" data-close="1">✕</button></div>
+      <div class="modal__body">
+        <div class="split-2">
+          <table class="tbl">
+            <tr><th colspan="2">Cihaz</th></tr>
+            ${satir('Cihaz no', esc(h.deviceId || '—'))}
+            ${satir('Fiş no', esc(h.receiptNo || '—'))}
+            ${satir('EKÜ no', esc(h.ejNo || '—'))}
+            ${satir('Cihaz saati', esc(h.rawDate || '—'))}
+            <tr><th colspan="2">Mali hafıza (kümülatif)</th></tr>
+            ${satir('Toplam', para(t.cumulativeTotal))}
+            ${satir('KDV', para(t.cumulativeVat))}
+          </table>
+          <table class="tbl">
+            <tr><th colspan="2">Bu rapor</th></tr>
+            ${satir('Brüt satış', para(t.gross))}
+            ${satir('Net satış', para(t.net))}
+            ${satir('İndirim', para(t.discount))}
+            ${satir('İptal', para(t.voidTotal))}
+            ${satir('Tahsilat toplamı', para(t.paymentsTotal))}
+            ${t.counters ? `<tr><th colspan="2">Belge sayaçları</th></tr>
+              ${Object.entries(t.counters).map(([k, v]) =>
+                satir(k, `<span class="mono">${esc(String(v))}</span>`)).join('')}` : ''}
+          </table>
+        </div>
+        ${tenders.length ? `<table class="tbl" style="margin-top:12px">
+          <tr><th>Ödeme türü</th><th class="right">İşlem</th><th class="right">Tutar</th></tr>
+          ${tenders.map(([k, v]) => `<tr><td>${esc(TENDER[k] || k)}</td>
+            <td class="right mono">${esc(String(v.count))}</td>
+            <td class="right mono">${para(v.total)}</td></tr>`).join('')}
+          </table>`
+        : '<div class="muted" style="margin-top:12px">Bu raporda hiçbir ödeme türünde hareket yok.</div>'}
+      </div>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Kapat</button></div>`);
+  },
+
+  /**
+   * What the till and the fiscal device last said to each other.
+   *
+   * Every request and reply, with the device's own error code where there was
+   * one. Before this existed, a refusal left nothing behind but a red line on
+   * a screen that somebody had to read out loud over the phone.
+   */
+  async okcCihazGunlugu() {
+    let r = null;
+    try { r = await api('GET', '/api/pos/fiscal/device-log?limit=60'); }
+    catch (e) { return err(e); }
+    const rows = r.rows || [];
+    const kisa = (p) => {
+      let o = p;
+      try { o = JSON.parse(p || '{}'); } catch (_) { return String(p || '').slice(0, 160); }
+      const s = JSON.stringify(o);
+      return s.length > 220 ? s.slice(0, 220) + '…' : s;
+    };
+    modal(`
+      <div class="modal__head"><h3>ÖKC cihaz günlüğü</h3><div class="spacer"></div>
+        <button class="close-x" data-close="1">✕</button></div>
+      <div class="modal__body">
+        ${rows.length ? `<table class="tbl"><thead><tr>
+            <th>Zaman</th><th>Yön</th><th>İşlem</th><th class="right">Süre</th><th>İçerik</th>
+          </tr></thead><tbody>
+          ${rows.map(x => `<tr>
+            <td class="mono" style="white-space:nowrap">${esc(String(x.created_at || '').replace('T', ' ').slice(0, 19))}</td>
+            <td>${x.direction === 'error'
+                  ? '<span class="badge badge--gray">hata</span>'
+                  : esc(x.direction === 'request' ? 'istek' : 'yanıt')}</td>
+            <td class="mono" style="font-size:12px">${esc(x.operation)}</td>
+            <td class="right mono">${x.duration_ms ? esc(String(x.duration_ms)) + ' ms' : ''}</td>
+            <td class="mono" style="font-size:11px;word-break:break-all">${esc(kisa(x.payload_masked))}</td>
+          </tr>`).join('')}
+          </tbody></table>`
+        : '<div class="empty">Henüz cihazla bir konuşma kaydedilmemiş.</div>'}
+        <div class="muted" style="font-size:12px;margin-top:8px">Kart numarası, PIN ve benzeri alanlar
+          kaydedilmez; yerlerine *** yazılır.</div>
+      </div>
+      <div class="modal__foot"><button class="btn btn--ghost" data-close="1">Kapat</button></div>`);
   },
 
   /**

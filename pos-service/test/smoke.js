@@ -241,17 +241,40 @@ async function step(name, fn) {
     await api('POST', `/api/pos/orders/${o3}/items`, { product_id: p2, qty: 2 });
     const pay = await api('POST', `/api/pos/orders/${o3}/fiscal/pay`, { method: 'kredi_karti' });
     assert.strictEqual(pay.ok, true, pay.error);
-    // wait for the device to answer
+    /*
+     * TWO EVENTS, NOT ONE, AND THIS USED TO WAIT FOR THE WRONG ONE.
+     *
+     * `state = approved` means the DEVICE approved and the fiscal record is
+     * committed. Posting that payment onto the bill is a SECOND database
+     * transaction that runs immediately afterwards, and deliberately so: the
+     * fiscal truth is written first so that a failure to post can never erase
+     * the fact that the device took the money. See the note in fiscal/index.js
+     * - joining the two would mean a failed bill update rolls back the record
+     * of a payment the customer has already made.
+     *
+     * So there is a real window, of milliseconds, where the transaction reads
+     * `approved` and the bill is still open. This check used to poll for the
+     * first event and assert on the second, which made it a coin toss that
+     * happened to land right until the approve path got two fields longer.
+     * It now waits for what it actually asserts.
+     */
     let tx = null;
     for (let i = 0; i < 25; i++) {
       await new Promise(r => setTimeout(r, 400));
       tx = (await api('GET', `/api/pos/fiscal/transactions/${pay.transactionId}`)).transaction;
-      if (tx && ['approved', 'declined', 'error'].includes(tx.state)) break;
+      if (tx && ['declined', 'error'].includes(tx.state)) break;
+      if (tx && tx.state === 'approved') {
+        const cur = (await api('GET', `/api/pos/orders/${o3}`)).order;
+        if (cur && cur.status === 'closed') break;
+      }
     }
     assert.strictEqual(tx.state, 'approved', 'fiscal state was ' + (tx && tx.state));
     assert.ok(tx.receipt && tx.receipt.fiscal_receipt_no, 'no fiscal receipt stored');
     const o = (await api('GET', `/api/pos/orders/${o3}`)).order;
     assert.strictEqual(o.status, 'closed', 'bill should close after the ÖKC approves');
+    /* and the money must actually be on the bill, not merely the bill shut */
+    assert.ok((o.payments || []).some(p => p.method === 'kredi_karti'),
+      'OKC onayladi, adisyon kapandi, ama odeme satiri yok');
     assert.strictEqual(Number(await db.value('SELECT COUNT(*) FROM order_payment_locks WHERE order_id=?', [o3])), 0);
   });
 

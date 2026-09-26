@@ -248,6 +248,19 @@ class HuginPcLinkAdapter extends FiscalAdapter {
     return cert && cert.fingerprint256 ? cert : null;
   }
 
+  /**
+   * Tell whoever is listening what just went over the wire.
+   *
+   * The adapter deliberately does not know what a database is. It announces;
+   * the fiscal layer sets `onExchange` and decides that the answer belongs in
+   * fiscal_provider_logs. A throw in the listener must never become a failed
+   * sale, so it is swallowed here and nowhere else.
+   */
+  announce(entry) {
+    if (typeof this.onExchange !== 'function') return;
+    try { this.onExchange(entry); } catch (_) { /* logging never breaks a sale */ }
+  }
+
   request(method, path, body = null, { withSerial = true, timeoutMs = null } = {}) {
     if (!this.host) {
       throw fail('HUGIN: cihazin IP adresi tanimli degil. Cihaz ekraninda yazan '
@@ -260,6 +273,10 @@ class HuginPcLinkAdapter extends FiscalAdapter {
       headers['Content-Type'] = 'application/json';
       headers['Content-Length'] = payload.length;
     }
+
+    const op = `${method} ${path}`;
+    const startedAt = Date.now();
+    this.announce({ direction: 'request', operation: op, payload: body === null ? {} : body });
 
     return new Promise((resolve, reject) => {
       const req = https.request({
@@ -286,6 +303,21 @@ class HuginPcLinkAdapter extends FiscalAdapter {
         if (settled) return;
         settled = true;
         try { req.destroy(); } catch (_) {}
+        /*
+         * A failure is the reason this log exists, so it is recorded with the
+         * device's own code and wording rather than ours. An X report refused
+         * with ERR_DATA_CORRUPT left no trace anywhere before this line.
+         */
+        this.announce({
+          direction: err ? 'error' : 'response',
+          operation: op,
+          httpStatus: (err && err.httpStatus) || (val && val.httpStatus) || null,
+          durationMs: Date.now() - startedAt,
+          payload: err
+            ? { code: err.code || null, deviceCode: err.deviceCode || null,
+                deviceTitle: err.deviceTitle || null, message: String(err.message || '') }
+            : (val && val.data) || {},
+        });
         err ? reject(err) : resolve(val);
       };
 

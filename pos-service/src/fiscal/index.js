@@ -86,9 +86,79 @@ async function assertDispatchAllowed(clientId, device, { workflow = 'SALE', tend
   await yetenek.assertAllowed(clientId, device.id, { workflow, tenderKinds });
 }
 
-function adapterFor(device) {
+/**
+ * Every conversation with a fiscal device, written down.
+ *
+ * fiscal_provider_logs has been in the schema since the first migration and
+ * NOTHING HAS EVER WRITTEN A ROW TO IT. That was invisible until a real HUGIN
+ * refused a real X report with "Gonderilen veri formati veya yapisi beklenen
+ * ile uyumsuz" and the only trace left anywhere was a red line on a screen
+ * that a person had to read out loud. A device that talks to us in error codes
+ * and a till that keeps none of them is a till that can only be debugged by
+ * standing next to it.
+ *
+ * Failures matter more than successes here, so both are written and a failure
+ * carries the device's own code and description.
+ *
+ * WHAT IS NOT WRITTEN: card numbers. The masking below is deliberately
+ * whole-value, not clever - any key whose name looks like a pan, a track, a
+ * CVV or a cardholder's name is replaced entirely rather than partially
+ * redacted. A masking rule that keeps "the last four" is a rule that will one
+ * day keep the first twelve because a vendor renamed a field.
+ */
+const SECRET_KEY = /(pan|cardno|cardnumber|track|cvv|cvc|pin|password|secret|token|expiry|expdate|holder|cardholder)/i;
+
+function maskPayload(v, depth = 0) {
+  if (v === null || v === undefined || depth > 6) return v;
+  if (Array.isArray(v)) return v.slice(0, 50).map(x => maskPayload(x, depth + 1));
+  if (typeof v !== 'object') return v;
+  const out = {};
+  for (const [k, val] of Object.entries(v)) {
+    out[k] = SECRET_KEY.test(k) ? '***' : maskPayload(val, depth + 1);
+  }
+  return out;
+}
+
+async function writeProviderLog(clientId, device, entry) {
+  try {
+    await db.exec(
+      `INSERT INTO fiscal_provider_logs
+         (client_id, fiscal_device_id, fiscal_transaction_id, provider, direction,
+          operation, payload_masked, http_status, duration_ms, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,NOW(3))`,
+      [clientId, device.id || null, entry.txId || null, device.provider || 'unknown',
+       entry.direction, String(entry.operation || '').slice(0, 48),
+       JSON.stringify(maskPayload(entry.payload)).slice(0, 60000),
+       entry.httpStatus || null, entry.durationMs || null]);
+  } catch (e) {
+    /* Logging must never break a sale. But it must not fail silently either -
+       that is the whole reason this table was empty for a month. */
+    log.warn('fiscal', 'cihaz gunlugu yazilamadi', { error: e.message });
+  }
+}
+
+/**
+ * Attach the same logging to an adapter somebody else built.
+ *
+ * The pairing route constructs its own HuginPcLinkAdapter - it has to, because
+ * pairing is the one call that goes out before the device row knows its own
+ * serial - so it cannot go through adapterFor. It is also the single most
+ * interesting exchange to have a record of, because it is where the device
+ * tells us what it is.
+ */
+function attachLog(adapter, clientId, device) {
+  if (!adapter || !clientId) return adapter;
+  adapter.onExchange = (entry) => { writeProviderLog(clientId, device || {}, entry); };
+  return adapter;
+}
+
+function adapterFor(device, { clientId = null, txId = null } = {}) {
   const Klass = ADAPTERS[String(device.provider || 'simulator').toLowerCase()] || SimulatorAdapter;
-  return new Klass(device);
+  const a = new Klass(device);
+  /* The adapter stays a pure protocol object: it announces what it did and
+     this layer decides where that goes. */
+  if (clientId) a.onExchange = (entry) => { writeProviderLog(clientId, device, { ...entry, txId }); };
+  return a;
 }
 
 async function activeDevice(clientId, cashRegisterId = null) {
@@ -201,7 +271,7 @@ async function deviceTables(clientId, device) {
 async function testDevice(clientId, deviceId) {
   const d = await db.one('SELECT * FROM fiscal_devices WHERE id=? AND client_id=?', [deviceId, clientId]);
   if (!d) { const e = new Error('Cihaz bulunamadi'); e.status = 404; throw e; }
-  const a = adapterFor(d);
+  const a = adapterFor(d, { clientId });
   const conn = await a.connect();
   const st = await a.status();
   await db.exec('UPDATE fiscal_devices SET status=?, status_detail=?, last_seen_at=NOW() WHERE id=?',
@@ -306,7 +376,7 @@ async function beginSale(clientId, orderId, { method, amount, installments = 0, 
   await event(clientId, txId, 'created', { amount: amt, method });
 
   try {
-    const adapter = adapterFor(device);
+    const adapter = adapterFor(device, { clientId, txId });
     const tables = await deviceTables(clientId, device);
     const base = require('./adapters/base');
     const sale = {
@@ -444,7 +514,7 @@ async function finishNow(clientId, txId, sale) {
   const tx = await db.one('SELECT * FROM fiscal_transactions WHERE id=? AND client_id=?', [txId, clientId]);
   if (!tx) return;
   const device = await db.one('SELECT * FROM fiscal_devices WHERE id=?', [tx.fiscal_device_id]);
-  const adapter = adapterFor(device);
+  const adapter = adapterFor(device, { clientId, txId });
   let res;
   try {
     res = await adapter.finishSale(tx.provider_session_id, sale);
@@ -501,7 +571,7 @@ async function poll(clientId, txId) {
   const tx = await db.one('SELECT * FROM fiscal_transactions WHERE id=? AND client_id=?', [txId, clientId]);
   if (!tx) return;
   const device = await db.one('SELECT * FROM fiscal_devices WHERE id=?', [tx.fiscal_device_id]);
-  const adapter = adapterFor(device);
+  const adapter = adapterFor(device, { clientId, txId });
   const deadline = Date.now() + 180000;   // three minutes at the card terminal
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 1200));
@@ -625,7 +695,7 @@ async function cancel(clientId, txId) {
   const tx = await db.one('SELECT * FROM fiscal_transactions WHERE id=? AND client_id=?', [txId, clientId]);
   if (!tx) { const e = new Error('Islem bulunamadi'); e.status = 404; throw e; }
   const device = await db.one('SELECT * FROM fiscal_devices WHERE id=?', [tx.fiscal_device_id]);
-  try { await adapterFor(device).cancelSale(tx.provider_session_id); } catch (_) {}
+  try { await adapterFor(device, { clientId, txId }).cancelSale(tx.provider_session_id); } catch (_) {}
   await db.exec("UPDATE fiscal_transactions SET state='cancelled', finished_at=NOW(), state_changed_at=NOW() WHERE id=?", [txId]);
   await releaseLock(clientId, tx.order_id);
   return true;
@@ -709,7 +779,7 @@ async function refund(clientId, { orderId, txId, items, reason, userId, amountMi
 
   let res;
   try {
-    res = await adapterFor(device).refund({
+    res = await adapterFor(device, { clientId, txId }).refund({
       externalId: String(refundId || txId),
       /* receipt-based brands */
       originalReceiptNo: rec && rec.fiscal_receipt_no,
@@ -764,7 +834,7 @@ async function voidTransaction(clientId, txId, { userId, reason } = {}) {
   if (!tx) { const e = new Error('Islem bulunamadi'); e.status = 404; throw e; }
   const device = await db.one('SELECT * FROM fiscal_devices WHERE id=?', [tx.fiscal_device_id]);
   if (!device) { const e = new Error('Islemi alan OKC cihazi kayitli degil'); e.status = 409; throw e; }
-  const adapter = adapterFor(device);
+  const adapter = adapterFor(device, { clientId, txId });
   if (typeof adapter.voidTransaction !== 'function') {
     const e = new Error('Bu cihaz icin gun sonu oncesi iptal tanimli degil.');
     e.status = 400; e.code = 'VOID_UNSUPPORTED'; throw e;
@@ -845,6 +915,88 @@ async function armedDevice(clientId) {
 }
 
 /**
+ * What a HUGIN S1 actually answers a report request with.
+ *
+ * Captured from FU00032768 on 26.09.2026, not from documentation:
+ *
+ *   "reportHeader": { "deviceId": "FU00032768", "receiptNo": "0003",
+ *                     "receiptDate": "26-09-2026 16:59", "ejNo": 1 }
+ *   "cumulativeTotal": "3270.75", "cumulativeVat": "264.02"
+ *   "counters": { "total": 2, "sales": 0, "canceled": 1, ... }
+ *   plus one object per tender: cash, eftPos, voucher, wire, openAccount,
+ *   check, noCharge, loyalty, gift, mobile, vpos, eMoney, ...
+ *
+ * THERE IS NO FIELD CALLED zNo. The first version of this function looked for
+ * `zNo`, `zNumber` and `ZNo`, found none of them, and wrote a Z row with an
+ * empty Z number - the one field on that row that matters. Three guessed
+ * spellings are not a protocol; this reads the header the device sends.
+ *
+ * `receiptNo` is read as the Z counter because that is what it counts on a Z
+ * report ("0003" was this device's third). It is NOT asserted to mean the same
+ * thing on an X, so an X keeps it as `device_receipt_no` in the raw record and
+ * leaves z_number null rather than filing a number that is not a Z number.
+ */
+function reportHeader(raw) {
+  const h = (raw && raw.reportHeader) || {};
+  return {
+    deviceId: h.deviceId || null,
+    receiptNo: h.receiptNo === undefined || h.receiptNo === null ? null : String(h.receiptNo),
+    ejNo: h.ejNo === undefined || h.ejNo === null ? null : String(h.ejNo),
+    deviceTime: deviceDate(h.receiptDate),
+    rawDate: h.receiptDate || null,
+  };
+}
+
+/**
+ * "26-09-2026 16:59" -> "2026-09-26 16:59:00".
+ *
+ * The device writes day first. The previous parser demanded an ISO prefix and
+ * therefore stored nothing at all, which was the right failure: a date read in
+ * the wrong order is worse than a blank, because 03-09 and 09-03 are both
+ * plausible and only one is true. Now the real format is handled, and anything
+ * that is not exactly it still stores nothing.
+ */
+function deviceDate(v) {
+  const m = /^(\d{2})-(\d{2})-(\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(String(v || '').trim());
+  if (!m) return null;
+  const [, dd, mm, yyyy, hh, mi, ss] = m;
+  if (Number(mm) < 1 || Number(mm) > 12 || Number(dd) < 1 || Number(dd) > 31) return null;
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss || '00'}`;
+}
+
+/**
+ * The figures an owner reconciles against, pulled out of the envelope.
+ *
+ * cumulativeTotal and cumulativeVat are the device's own running fiscal-memory
+ * totals - the number that has to agree with the books - and they were going
+ * straight into a JSON blob nobody reads.
+ */
+function reportTotals(raw) {
+  const r = raw || {};
+  const money = (v) => (typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v) ? v : null);
+  const tenders = {};
+  for (const k of ['cash', 'eftPos', 'voucher', 'wire', 'openAccount', 'check',
+                   'noCharge', 'loyalty', 'gift', 'mobile', 'vpos', 'eMoney',
+                   'charity', 'transportCard', 'coPay', 'dutyFree']) {
+    const t = r[k];
+    if (t && typeof t === 'object' && (t.total !== undefined || t.count !== undefined)) {
+      tenders[k] = { total: money(t.total), count: Number(t.count || 0) };
+    }
+  }
+  return {
+    gross: money(r.grossSales && r.grossSales.total),
+    net: money(r.netSales && r.netSales.total),
+    discount: money(r.discount && r.discount.total),
+    voidTotal: money(r.void && r.void.total),
+    paymentsTotal: money(r.paymentsTotal),
+    cumulativeTotal: money(r.cumulativeTotal),
+    cumulativeVat: money(r.cumulativeVat),
+    counters: r.counters && typeof r.counters === 'object' ? r.counters : null,
+    tenders,
+  };
+}
+
+/**
  * Take an X or a Z on the device and KEEP THE RECORD.
  *
  * The record-keeping here was broken in the quietest possible way.
@@ -857,32 +1009,39 @@ async function armedDevice(clientId) {
  * thing a till asks a fiscal device to do - not recording it is not a cosmetic
  * gap.
  *
- * report_key is the idempotency handle, so it has to be made of what
- * identifies the report and nothing else: the device, the kind, and the
- * device's own Z number when it gives one. When it does not (an X has no Z
- * number), the request's own UUID is used - two X reports taken a minute apart
- * are two genuine events and must not collide.
+ * The key is built from the device's own header when it gives one, so a retry
+ * of the same report collides instead of duplicating. An X, whose receiptNo we
+ * have not established the meaning of, falls back to a UUID: two X reports a
+ * minute apart are two genuine events and must not be merged on a guess.
  */
 async function deviceReport(clientId, kind = 'X') {
   await requireEnabled(clientId);
   const d = await activeDevice(clientId);
   if (!d) { const e = new Error('Tanimli OKC cihazi yok'); e.status = 400; throw e; }
-  const out = await adapterFor(d).report(kind);
+  const out = await adapterFor(d, { clientId }).report(kind);
   const raw = out.raw || out.data || {};
   const k = String(out.kind || kind || 'X').toUpperCase();
-  const zNo = raw.zNo || raw.zNumber || raw.ZNo || null;
-  const reportKey = `${d.id}:${k}:${zNo || crypto.randomUUID()}`.slice(0, 96);
-  const devTime = typeof raw.dateTime === 'string' ? raw.dateTime
-    : (typeof raw.deviceTime === 'string' ? raw.deviceTime : null);
+  const head = reportHeader(raw);
+  const totals = reportTotals(raw);
+
+  const zNo = k === 'Z' ? head.receiptNo : null;
+  const reportKey = (k === 'Z' && head.receiptNo
+    ? `${d.id}:Z:${head.deviceId || d.serial_number || 'dev'}:${head.receiptNo}`
+    : `${d.id}:${k}:${crypto.randomUUID()}`).slice(0, 96);
+
   try {
     await db.exec(
       `INSERT INTO fiscal_device_reports
          (client_id, fiscal_device_id, report_type, report_key, z_number, device_time,
-          payment_method, raw, status, created_at, processed_at)
-       VALUES (?,?,?,?,?,?,?,?,?,NOW(),NOW())`,
-      [clientId, d.id, k, reportKey, zNo ? String(zNo).slice(0, 24) : null,
-       devTime && /^\d{4}-\d{2}-\d{2}/.test(devTime) ? devTime.slice(0, 19).replace('T', ' ') : null,
-       'NONE', JSON.stringify(raw).slice(0, 60000), 'ok']);
+          amount_minor, payment_method, note, raw, status, created_at, processed_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())`,
+      [clientId, d.id, k, reportKey, zNo ? String(zNo).slice(0, 24) : null, head.deviceTime,
+       0, 'NONE',
+       /* the two numbers an owner reconciles against, readable without opening the blob */
+       [totals.cumulativeTotal ? 'Kumulatif: ' + totals.cumulativeTotal : null,
+        totals.cumulativeVat ? 'KDV: ' + totals.cumulativeVat : null,
+        head.ejNo ? 'EKU: ' + head.ejNo : null].filter(Boolean).join(' | ').slice(0, 255) || null,
+       JSON.stringify(raw).slice(0, 60000), 'ok']);
   } catch (e) {
     /* Loud, not silent. The report itself happened on the device; if we could
        not write it down the operator has to be told, because the paper in his
@@ -895,12 +1054,15 @@ async function deviceReport(clientId, kind = 'X') {
   }
   out.recorded = true;
   out.reportKey = reportKey;
-  out.zNumber = zNo || null;
-  log.info('fiscal', 'OKC raporu alindi', { device: d.id, kind: k, z: zNo || null });
+  out.zNumber = zNo;
+  out.header = head;
+  out.totals = totals;
+  log.info('fiscal', 'OKC raporu alindi', {
+    device: d.id, kind: k, z: zNo, kumulatif: totals.cumulativeTotal });
   return out;
 }
 
 module.exports = {
-  assertDispatchAllowed, ADAPTERS, adapterFor, deviceTables, listDevices, saveDevice, testDevice, beginSale, poll,
-  getTransaction, cancel, refund, voidTransaction, refundable, deviceReport, armedDevice, isEnabled, requireEnabled, activeDevice,
+  assertDispatchAllowed, ADAPTERS, adapterFor, attachLog, maskPayload, deviceTables, listDevices, saveDevice, testDevice, beginSale, poll,
+  getTransaction, cancel, refund, voidTransaction, refundable, deviceReport, reportHeader, reportTotals, deviceDate, armedDevice, isEnabled, requireEnabled, activeDevice,
   acquireLock, releaseLock };

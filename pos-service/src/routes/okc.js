@@ -266,6 +266,10 @@ r.post('/devices/:id/pair', wrap(async (req, res) => {
     serial_number: null,
   });
 
+  /* Pairing is the exchange most worth having a record of: it is where the
+     device tells us its serial, its firmware and its certificate. */
+  if (fiscal.attachLog) fiscal.attachLog(adapter, req.clientId, d);
+
   let paired;
   try { paired = await adapter.pair(); }
   catch (e) {
@@ -388,7 +392,7 @@ r.post('/devices/:id/diagnostics', wrap(async (req, res) => {
 
   let adapter = null;
   try {
-    const a = fiscal.adapterFor ? fiscal.adapterFor(d) : null;
+    const a = fiscal.adapterFor ? fiscal.adapterFor(d, { clientId: req.clientId }) : null;
     adapter = a && a.describe ? await a.describe() : null;
   } catch (e) { adapter = { error: e.code || e.message }; }
 
