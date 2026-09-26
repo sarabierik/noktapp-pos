@@ -28,3 +28,10 @@ noktapp-backups/
 mobile/android/key.properties
 *.jks
 *.keystore
+
+# a clone of this repo nested inside itself. It appeared on the build machine
+# as C:\Users\eriks\noktapp-pos\noktapp-pos and `git add -A` recorded it as a
+# gitlink (mode 160000) pointing at a commit no remote has - which makes every
+# later clone produce an empty folder and `git submodule` complain about a
+# submodule that was never declared.
+/noktapp-pos/
