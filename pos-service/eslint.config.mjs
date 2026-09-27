@@ -99,6 +99,14 @@ export default [
       globals: {
         document: 'readonly', window: 'readonly', location: 'readonly',
         navigator: 'readonly', getComputedStyle: 'readonly', localStorage: 'readonly',
+        /*
+         * DOM constructors, for the same reason. A screenshot script that has
+         * to make a <select> react does `s.dispatchEvent(new Event('change'))`
+         * inside the page - `new Event` is the page's constructor, not Node's,
+         * and without this line CI fails the whole lint job on one word.
+         */
+        Event: 'readonly', CustomEvent: 'readonly',
+        MouseEvent: 'readonly', KeyboardEvent: 'readonly',
         /* the till's own front-end globals, as seen from inside page.evaluate */
         App: 'readonly', Screens: 'readonly', PAGES: 'readonly', HELP: 'readonly',
         SEARCH: 'readonly', go: 'readonly', api: 'readonly', closeModal: 'readonly',
