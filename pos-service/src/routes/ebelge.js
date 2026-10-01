@@ -48,7 +48,7 @@ r.get('/ayarlar', auth.requirePerm('fatura.manage'), wrap(async (req, res) => {
       gonderen_etiket: c.gonderen_etiket, il: c.il, ilce: c.ilce,
       fatura_seri: await db.getSetting('ebelge.fatura_seri', 'FTR'),
       efatura_sifre_var: !!c.efatura_sifre, earsiv_sifre_var: !!c.earsiv_sifre,
-      sifre_korumali: c.sifreKorumali, sifre_yontemi: c.sifreYontemi,
+      sifre_korumali: c.sifreKorumali, sifre_sarili: c.sifreSarili, sifre_yontemi: c.sifreYontemi,
     },
     isletme: st,
     varsayilan: E.VARSAYILAN,

@@ -701,8 +701,13 @@ Screens.add({
             <p class="muted" style="margin-top:0;font-size:12.5px">QNB'de portal ve web servis kullanıcısı
               aynıdır. NOKTApp için ayrı bir kullanıcı açın: portalde o kullanıcının parolası değişirse
               yenisini buraya da yazın, yoksa QNB kullanıcıyı bloke eder.</p>
-            ${a.sifre_korumali ? '' : `<div class="alert alert--warn">Parolalar bu bilgisayarda
-              şifrelenemiyor (${esc(a.sifre_yontemi || 'yöntem yok')}). Kaydedilir ama korumasız durur.</div>`}
+            ${a.sifre_korumali
+              ? (a.efatura_sifre_var || a.earsiv_sifre_var) && !a.sifre_sarili
+                ? `<div class="alert alert--warn">Kayıtlı parolalar şifresiz duruyor. Parolaları
+                   yeniden yazıp kaydedin; bu sefer ${esc(a.sifre_yontemi)} ile şifrelenecekler.</div>`
+                : ''
+              : `<div class="alert alert--warn">Parolalar bu bilgisayarda şifrelenemiyor
+                 (${esc(a.sifre_yontemi || 'yöntem yok')}). Kaydedilir ama korumasız durur.</div>`}
             <h4 style="margin:14px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3)">e-Fatura</h4>
             <div class="field"><label>Kullanıcı</label>
               <input class="input mono" id="efKul" value="${esc(a.efatura_kullanici || '')}" autocomplete="off"></div>

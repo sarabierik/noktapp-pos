@@ -335,6 +335,30 @@ const oku = (id) => db.one('SELECT * FROM invoices WHERE id=?', [id]);
     assert.strictEqual((await E.conf()).efatura_sifre, SIFRE, 'bos parola alani kayitli parolayi silmis');
   });
 
+  await step('"parola sifrelenemiyor" uyarisi MAKINEYI anlatir, kayitli degeri degil', async () => {
+    /*
+     * Found on erik's own machine, on a fresh install: the screen said in red
+     * "Parolalar bu bilgisayarda sifrelenemiyor (windows-dpapi)" on a PC where
+     * DPAPI demonstrably works. The flag was derived from "is a stored
+     * password already wrapped", and on a new install nothing is stored - so
+     * the one message that must never be wrong in the direction that stops
+     * someone entering their password was wrong exactly that way.
+     */
+    await db.exec("DELETE FROM np_settings WHERE k IN ('ebelge.efatura_sifre','ebelge.earsiv_sifre')");
+    const bos = await E.conf();
+    assert.strictEqual(bos.sifreKorumali, S.korumaVar(),
+      'koruma bayragi makinenin yetenegini degil kayitli degeri anlatiyor');
+    assert.strictEqual(bos.sifreSarili, false, 'kayitli parola yokken sarili gorunuyor');
+    if (S.korumaVar()) {
+      assert.strictEqual(bos.sifreKorumali, true,
+        'DPAPI calisan makinede "sifrelenemiyor" deniyor - musteri parolasini girmez');
+    }
+    await ayarla(port);
+    const dolu = await E.conf();
+    assert.strictEqual(dolu.sifreKorumali, S.korumaVar());
+    assert.strictEqual(dolu.sifreSarili, S.sifreliMi(await db.getSetting('ebelge.efatura_sifre')));
+  });
+
   /* ---------------------------------------------------------------- */
   await step('UBL: cbc:Percent YUZDE olarak yazilir (10.00 -> 10, 0.1 DEGIL)', async () => {
     const f = { id: 1, kind: 'sale', issue_date: '2026-09-29', full_no: 'FTR2026000001',

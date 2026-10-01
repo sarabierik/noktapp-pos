@@ -144,7 +144,23 @@ async function conf() {
     otomatik: (await A('otomatik', '1')) === '1',
     unvan: st.unvan, vergi_dairesi: st.vergi_dairesi, adres: st.adres,
     eposta: st.eposta, telefon: st.telefon,
-    sifreKorumali: S.sifreliMi(efSar) || S.sifreliMi(eaSar),
+    /*
+     * TWO DIFFERENT QUESTIONS, and the first version answered the wrong one.
+     *
+     * `sifreKorumali` asks CAN THIS MACHINE protect a password - that is what
+     * the screen's badge and its red warning are about, and the person reading
+     * it has not typed a password yet. Deriving it from "is a stored password
+     * already wrapped" meant a brand new installation, on a Windows PC where
+     * DPAPI works perfectly, told its owner in red that their QNB password
+     * would be stored unprotected. The one thing that message must never do is
+     * be wrong in the direction that stops someone entering the password.
+     *
+     * `sifreSarili` is the other question - are the values ACTUALLY on disk
+     * wrapped - and it stays, because a machine where protection broke after
+     * the password was saved is a real state worth seeing.
+     */
+    sifreKorumali: S.korumaVar(),
+    sifreSarili: S.sifreliMi(efSar) || S.sifreliMi(eaSar),
     sifreYontemi: S.yontem(),
   };
 }
