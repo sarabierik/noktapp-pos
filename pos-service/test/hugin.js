@@ -162,7 +162,17 @@ function fakeDevice(creds, { serialNo = 'FU00000123', expect = {} } = {}) {
        * because that is what I expected, and the suite passed against it while
        * the real device was writing empty Z numbers into the register.
        */
-      const rp = req.method === 'POST' && req.url.match(/^\/v1\/reports\/(X|Z)\/(print|detail)$/);
+      /*
+       * The stub answers the way the real device does: X over GET, Z over
+       * POST, and the WRONG verb gets ERR_DATA_CORRUPT rather than a 404 -
+       * which is exactly how three days were spent thinking our body was
+       * malformed when the method was wrong.
+       */
+      const rpAny = req.url.match(/^\/v1\/reports\/(X|Z)\/(print|detail)$/);
+      if (rpAny && req.method !== (rpAny[1] === 'X' ? 'GET' : 'POST')) {
+        return err('ERR_DATA_CORRUPT', 'Mesaj hatalı');
+      }
+      const rp = rpAny && req.method === (rpAny[1] === 'X' ? 'GET' : 'POST') ? rpAny : null;
       if (rp) {
         const head = { deviceId: serialNo, receiptNo: rp[1] === 'Z' ? '0003' : '0041',
                        receiptDate: '26-09-2026 16:59', ejNo: 1 };
@@ -625,8 +635,12 @@ function deviceRow(port, extra = {}) {
       'gecersiz rapor turu icin cihaza istek gitti - Z mali gunu kapatir');
     await a.report('Z').catch(() => {});
     assert.strictEqual(bench.seen[bench.seen.length - 1].url, '/v1/reports/Z/print');
+    assert.strictEqual(bench.seen[bench.seen.length - 1].method, 'POST',
+      'Z POST ile gider - gercek cihazda kanitlandi');
     await a.report('x', { print: false }).catch(() => {});
     assert.strictEqual(bench.seen[bench.seen.length - 1].url, '/v1/reports/X/detail');
+    assert.strictEqual(bench.seen[bench.seen.length - 1].method, 'GET',
+      'X GET ile gider - POST denendiginde cihaz ERR_DATA_CORRUPT donuyor');
   });
 
   /* ------------------------------------------------------------------ */
@@ -691,6 +705,29 @@ function deviceRow(port, extra = {}) {
   /* ------------------------------------------------------------------ */
   /* the orchestrator's half: does the till write the references down?    */
   /* ------------------------------------------------------------------ */
+
+  await step('X is a GET and Z is a POST - the two are not interchangeable', async () => {
+    /*
+     * The reference says POST for both. A real FU00032768 refused an X sent as
+     * POST three times with ERR_DATA_CORRUPT / "Mesaj hatalı", and HUGIN
+     * support confirmed on 28.09.2026 that X must be a bodiless GET and that
+     * their documentation will be corrected.
+     *
+     * This check exists so nobody unifies the two verbs later. Getting it
+     * wrong in the X direction costs an error message; getting it wrong in the
+     * Z direction costs the one report that cannot be taken back.
+     */
+    assert.strictEqual(HuginPcLinkAdapter.reportMethod('X'), 'GET');
+    assert.strictEqual(HuginPcLinkAdapter.reportMethod('Z'), 'POST');
+
+    const a = new HuginPcLinkAdapter(deviceRow(PORT, { pclink_cert_sha256: paired.certSha256 }));
+    const x = await a.report('X');
+    const call = bench.seen[bench.seen.length - 1];
+    assert.strictEqual(call.method, 'GET');
+    assert.strictEqual(call.url, '/v1/reports/X/print');
+    assert.strictEqual(call.body, '', 'X raporu govdesiz gitmeli');
+    assert.ok(x.raw && x.raw.reportHeader, 'X yanitinda baslik yok');
+  });
 
   await step('the adapter declares itself request/response, not poll', () => {
     const a = new HuginPcLinkAdapter(deviceRow(PORT, { pclink_cert_sha256: paired.certSha256 }));

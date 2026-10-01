@@ -367,6 +367,10 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .badge--open{background:var(--orange-soft);color:var(--orange-dark)}
 .badge--closed{background:var(--ok-soft);color:var(--ok);border:1px solid var(--ok-line)}
 .badge--gray{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line)}
+/* Red is for the two things a person has to act on: a document QNB refused,
+   and a send stopped by a wrong password. Nothing routine is red. */
+.badge--red{background:var(--red-soft);color:var(--red);border:1px solid #F5C6C2}
+.neg{color:var(--red)}
 /* Top right, under the header bar - a message that appears at the bottom of a
    1080p till is below the waiter's eyeline and gets missed. */
 /* ------------------------------------------------------ arama (search) */

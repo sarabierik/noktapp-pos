@@ -1452,6 +1452,8 @@ Object.assign(Screens, {
       <div class="modal__foot" style="flex-wrap:wrap;gap:8px">
         <button class="btn btn--ghost" id="bdPrint">Fiş yazdır</button>
         <button class="btn btn--ghost" id="bdMail">E-posta gönder</button>
+        ${o.status === 'closed' && can('fatura.kes')
+          ? '<button class="btn btn--primary" id="bdFatura">Fatura kes</button>' : ''}
         ${o.status === 'closed' ? '<button class="btn btn--ghost" id="bdReopen">Masaya geri aç</button>' : ''}
         <div class="spacer"></div>
         ${isOwner ? '<button class="btn btn--danger" id="bdDelete">Adisyonu iptal et</button>' : ''}
@@ -1461,6 +1463,15 @@ Object.assign(Screens, {
       try { await api('POST', `/api/pos/orders/${o.id}/print`); toast('Fiş yazıcıya gönderildi', 'ok'); }
       catch (e) { err(e); }
     };
+    /*
+     * "Fatura kes" lives HERE, on the closed bill, because that is where the
+     * cashier is standing when the guest asks for one - the bill is closed,
+     * the ÖKC receipt is already printed, and the invoice is issued against
+     * that receipt. See screens/fatura.js for what the dialog does.
+     */
+    if ($('#bdFatura')) {
+      $('#bdFatura').onclick = () => { closeModal(); this.faturaKesDialog(o.id); };
+    }
     for (const b of $$('[data-void]')) {
       b.onclick = async () => {
         const pid = b.getAttribute('data-void');

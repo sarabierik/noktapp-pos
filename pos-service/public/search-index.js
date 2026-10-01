@@ -245,4 +245,21 @@ registerSearch([
     keywords: ['kurulum', 'baştan', 'sihirbaz', 'ilk ayar'] },
   { page: 'profil', label: 'Profilim', area: 'Ayarlar',
     keywords: ['şifremi değiştir', 'pin değiştir', 'kendi hesabım', 'kendi pinim'] },
+
+  /* ------------------------------------------------------- e-belge */
+  /* The guest says "fatura istiyorum" and the cashier types that word. Which
+     rail the document goes down - e-Fatura or e-Arsiv - is QNB's answer to a
+     taxpayer lookup, not something anyone at the till chooses, so both words
+     lead to the same place. */
+  { page: 'faturalar', label: 'Kesilen faturalar', area: 'Raporlar', perm: 'report.view',
+    keywords: ['fatura', 'fatura kes', 'fatura istiyor', 'e-fatura', 'e-arşiv', 'earsiv',
+               'efatura', 'ettn', 'fatura no', 'faturalı satış', 'fatura sorgula',
+               'fatura gitmedi', 'iade faturası', 'fatura iptal'] },
+  { page: 'gelenfatura', label: 'Gelen e-Faturalar', area: 'Raporlar', perm: 'report.view',
+    keywords: ['gelen fatura', 'tedarikçi faturası', 'kabul', 'red', 'reddet',
+               'uygulama yanıtı', '8 gün', 'alışa aktar', 'ticari fatura', 'temel fatura'] },
+  { page: 'efatura', label: 'e-Fatura / e-Arşiv ayarları', area: 'Ayarlar', perm: 'fatura.manage',
+    keywords: ['qnb', 'qnb esolutions', 'efinans', 'entegratör', 'kontör', 'kontor',
+               'e-fatura ayarı', 'e-arşiv ayarı', 'gib', 'mali mühür', 'erp kodu',
+               'fatura parolası', 'servis adresi', 'canlıya geç'] },
 ]);

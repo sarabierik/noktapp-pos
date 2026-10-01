@@ -125,7 +125,7 @@ if node "$ROOT/test/karekod.js" 2>&1 | tail -1; then :; else FAILED=1; fi
 # skipped by name rather than left to fail with a timeout that says nothing.
 PANEL_SUITES=" integration loyalty zincir geri "
 
-for t in schema gocler smoke akis integration loyalty ui ui-all yardim menu stock settings station floor tablegroup finance export till matematik pricing guest device qrmenu entegrasyon yemeksepeti migros paket okc okc-kayit hugin zincir teshis roller yetki pda senkron eslestirme demoveri kilit zaman uclar geri kapsam; do
+for t in schema gocler smoke akis integration loyalty ui ui-all yardim menu stock settings station floor tablegroup finance export till matematik pricing guest device qrmenu entegrasyon yemeksepeti migros paket okc okc-kayit hugin ebelge zincir teshis roller yetki pda senkron eslestirme demoveri kilit zaman uclar geri kapsam; do
   if [ "${CI_SKIP_PANEL:-0}" = "1" ] && [[ "$PANEL_SUITES" == *" $t "* ]]; then
     printf '%-13s %s\n' "$t" "atlandi (panel yok)"
     continue

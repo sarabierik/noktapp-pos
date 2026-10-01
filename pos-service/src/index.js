@@ -230,6 +230,7 @@ mount('/api/qr', require('./routes/qr'));
 mount('/api/mobile', require('./routes/mobile'));
 mount('/api/integrations', require('./routes/integrations'));
 mount('/api/delivery', require('./routes/delivery'));
+mount('/api/ebelge', require('./routes/ebelge'));
 
 // the till UI is served from here so the Electron shell only has to point a
 // window at http://127.0.0.1:<port>/
@@ -309,6 +310,12 @@ async function bootstrap() {
   /* Never awaited into the boot path: a platform that is unreachable, or a
      credential that will not decrypt, must not stop the till from opening. */
   integrations.start().catch(e => log.warn('entegrasyon', 'baslatilamadi', e.message));
+  /*
+   * The e-Fatura queue sweep. An e-Fatura's outcome arrives from GIB
+   * minutes after it was sent, so without a sweep a refusal that had to be
+   * fixed the same day would sit unread until somebody opened the invoice.
+   */
+  require('./routes/ebelge').taramaBaslat();
 
   /*
    * The DEMO build fills itself on its first open, and only then.

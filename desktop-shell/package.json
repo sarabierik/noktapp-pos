@@ -1,7 +1,7 @@
 {
   "name": "noktapp-pos-desktop",
   "productName": "NoktApp POS",
-  "version": "3.10.3",
+  "version": "3.11.0",
   "description": "NOKTApp POS - restoran kasa uygulamasi",
   "main": "src/main.js",
   "author": "NOKTApp <destek@noktapp.com>",

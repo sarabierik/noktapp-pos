@@ -42,6 +42,16 @@ const PERMISSIONS = [
    * cash in. A cashier who could edit the fee could set it to zero.
    */
   'delivery.manage', 'delivery.order',
+  /*
+   * e-Fatura / e-Arsiv. Split for the same reason as the two pairs above.
+   * `fatura.kes` is the guest at the till asking for an invoice while the
+   * waiter is still holding the card machine - it has to be a cashier's key.
+   * `fatura.manage` holds the QNB account, cancels a document that has
+   * already reached GIB, and answers a supplier's TICARI invoice with
+   * KABUL/RED: three acts with legal weight and a deadline, and none of them
+   * belongs to whoever happens to be on shift.
+   */
+  'fatura.kes', 'fatura.manage',
 ];
 
 let secret = null;
@@ -286,7 +296,7 @@ async function permissionsFor(clientId, userId, role) {
   if (role === 'cashier') {
     return ['order.create', 'order.discount', 'order.item.cancel', 'order.transfer', 'order.split',
       'payment.take', 'shift.open', 'shift.close', 'report.view', 'customer.manage', 'fiscal.use',
-      'integration.order', 'delivery.order'];
+      'integration.order', 'delivery.order', 'fatura.kes'];
   }
   return ['order.create', 'order.item.cancel', 'customer.manage'];
 }

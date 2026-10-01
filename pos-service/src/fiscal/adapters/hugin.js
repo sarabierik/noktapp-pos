@@ -725,13 +725,37 @@ class HuginPcLinkAdapter extends FiscalAdapter {
    * `detail` returns the report as data; `print` puts it on the device's
    * paper and answers 204. Both are the same data model.
    */
+  /**
+   * X and Z use DIFFERENT HTTP METHODS, and the documentation says otherwise.
+   *
+   *   X -> GET   /v1/reports/X/print      bodiless
+   *   Z -> POST  /v1/reports/Z/print      bodiless
+   *
+   * Both were established against a real device, not read:
+   *
+   *  - Z as a POST printed a Z report on FU00032768 on 26.09.2026.
+   *  - X as a POST answered, three times, HTTP 200 with
+   *    ERR_DATA_CORRUPT / "Mesaj hatalı". Not a missing body - the wrong verb.
+   *    HUGIN support (Mete Ermişer, 28.09.2026) confirmed: "X raporu icinde
+   *    govdesiz bir sekilde GET istegi atmalisiniz. Dokuman ile farkliliklar
+   *    en yakin zamanda duzeltilecektir."
+   *
+   * So the asymmetry is real and the reference is wrong about it. Do not
+   * "tidy" this into one verb: making Z a GET would break the one report that
+   * cannot be taken back, on a device where the failure is a closed fiscal day
+   * or no fiscal day at all.
+   */
+  static reportMethod(kind) { return kind === 'X' ? 'GET' : 'POST'; }
+
   async report(kind = 'X', { print = true } = {}) {
     const k = String(kind || '').toUpperCase();
     if (k !== 'X' && k !== 'Z') {
       throw fail(`HUGIN: "${kind}" rapor turu yok. X veya Z olmali.`,
         'REPORT_KIND_UNSUPPORTED', 400);
     }
-    const r = await this.request('POST', `/reports/${k}/${print ? 'print' : 'detail'}`, null,
+    const r = await this.request(
+      HuginPcLinkAdapter.reportMethod(k),
+      `/reports/${k}/${print ? 'print' : 'detail'}`, null,
       { timeoutMs: 120000 });
     return { kind: k, printed: !!print, data: r.data || {}, raw: r.data || {} };
   }

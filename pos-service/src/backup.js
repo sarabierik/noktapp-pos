@@ -77,17 +77,53 @@ function toolPath(tool, override) {
 
 function dumpBinary() { return toolPath('mariadb-dump', process.env.NOKTAPP_DUMP_BIN); }
 
+/*
+ * SETTINGS THAT MAY NOT LEAVE THE PC.
+ *
+ * One backup a night goes to our server. Until this existed it was a plain
+ * mysqldump of the whole database, which meant the QNB eSolutions user name
+ * and password went with it - the two things the settings screen promises the
+ * restaurant stay on their own computer.
+ *
+ * The password is wrapped by DPAPI and would not decrypt anywhere else, but
+ * that is not the argument: sirla.js falls back to marking a value `duz:` on
+ * a machine where DPAPI is unavailable, and a user name is a credential too.
+ * A promise that holds only while a fallback never fires is not a promise.
+ *
+ * So a CLOUD dump is taken in two passes: everything except np_settings, then
+ * np_settings without these keys. A LOCAL snapshot stays complete - it never
+ * leaves the building, and a restore from it should not ask the restaurant to
+ * find their QNB password again.
+ */
+const BULUTA_GITMEZ = [
+  'ebelge.efatura_kullanici', 'ebelge.efatura_sifre',
+  'ebelge.earsiv_kullanici', 'ebelge.earsiv_sifre',
+  'jwt_secret',
+];
+function ayarSuzgeci() {
+  return "k NOT IN (" + BULUTA_GITMEZ.map((k) => "'" + k + "'").join(',') + ")";
+}
+
+
 function run(kind = 'local') {
   return new Promise((resolve, reject) => {
     fs.mkdirSync(config.backupDir, { recursive: true });
     const name = `noktapp-pos-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}-${kind}.sql.gz`;
     const target = path.join(config.backupDir, name);
-    const args = [
+    const ortak = [
       '--host=' + config.db.host, '--port=' + config.db.port,
       '--user=' + config.db.user, '--password=' + config.db.password,
       '--single-transaction', '--routines', '--triggers', '--events',
-      '--default-character-set=utf8mb4', config.db.database,
+      '--default-character-set=utf8mb4',
     ];
+    /* See BULUTA_GITMEZ: the copy that leaves the building carries no QNB
+       credentials, so the settings table is dumped separately and filtered. */
+    const buluta = kind === 'cloud';
+    const args = buluta
+      ? ortak.concat(['--ignore-table=' + config.db.database + '.np_settings', config.db.database])
+      : ortak.concat([config.db.database]);
+    const ayarArgs = ortak.concat(['--no-create-info=0', '--where=' + ayarSuzgeci(),
+      config.db.database, 'np_settings']);
     /*
      * `encoding: 'buffer'` and not the default, which is where every Turkish
      * character in every backup this program has ever taken went.
@@ -114,7 +150,24 @@ function run(kind = 'local') {
          */
         const header = `-- NOKTApp POS app_version: ${process.env.NOKTAPP_VERSION || '2.0.0'}\n`
           + `-- alindi: ${new Date().toISOString()} (${kind})\n`;
-        const gz = zlib.gzipSync(Buffer.concat([Buffer.from(header, 'utf8'), Buffer.from(stdout)]));
+        let govde = Buffer.from(stdout);
+        if (buluta) {
+          /* The filtered settings table, appended to the dump that is missing
+             it. If this second pass fails the backup is NOT written: a cloud
+             dump with no settings at all restores into a till that cannot
+             find its own licence, and silently uploading one would be worse
+             than uploading nothing. */
+          try {
+            govde = Buffer.concat([govde, await new Promise((z, x) => {
+              execFile(dumpBinary(), ayarArgs,
+                { maxBuffer: 1024 * 1024 * 64, windowsHide: true, encoding: 'buffer' },
+                (e2, o2) => (e2 ? x(new Error(e2.message)) : z(Buffer.from(o2))));
+            })]);
+          } catch (e2) {
+            return reject(new Error('Yedek alinamadi (ayarlar): ' + e2.message));
+          }
+        }
+        const gz = zlib.gzipSync(Buffer.concat([Buffer.from(header, 'utf8'), govde]));
         fs.writeFileSync(target, gz);
         const sha = crypto.createHash('sha256').update(gz).digest('hex');
         /*
@@ -214,4 +267,5 @@ function start() {
 }
 function stop() { if (localTimer) clearInterval(localTimer); if (cloudTimer) clearInterval(cloudTimer); }
 
-module.exports = { run, uploadToCloud, prune, start, stop, toolPath };
+module.exports = {
+  BULUTA_GITMEZ, run, uploadToCloud, prune, start, stop, toolPath };

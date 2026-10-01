@@ -238,6 +238,21 @@ const TRANSACTIONAL = [
   'np_menu_apply_log', 'np_settings_log',
   'fiscal_attempts', 'fiscal_device_commands', 'fiscal_operations',
   'fiscal_outbox', 'fiscal_provider_logs',
+  /*
+   * e-Belge. Invoices are trading records like the bills they were issued
+   * against, so they go with the bills - a demonstration that left real
+   * invoice numbers behind would have the first live invoice start at some
+   * arbitrary sequence. Children first: the items and charges, then the
+   * headers.
+   *
+   * ebelge_log is the QNB conversation and gelen_belge the supplier mailbox;
+   * both describe documents that are about to be deleted, so keeping them
+   * would leave a log of invoices that no longer exist. Neither holds a
+   * credential - the passwords live in np_settings, which is not on this list
+   * and must not be: clearing the demo data must not disconnect the QNB
+   * account the owner has already set up.
+   */
+  'invoice_charges', 'invoice_items', 'invoices', 'gelen_belge', 'ebelge_log',
 ];
 
 const CATALOGUE = [
