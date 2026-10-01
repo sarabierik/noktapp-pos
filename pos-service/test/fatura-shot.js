@@ -234,6 +234,12 @@ async function adisyon(satirlar, fisNo) {
   await page.evaluate(() => go('faturalar'));
   await shot('1-faturalar');
 
+  /* the door that was missing: pick a closed bill to invoice */
+  await page.evaluate(() => Screens.ftAdisyonSec());
+  await page.waitForTimeout(1600);
+  await shot('1b-adisyon-sec');
+  await page.evaluate(() => closeModal());
+
   await page.evaluate((id) => Screens.faturaDialog(id), f1.id);
   await shot('2-fatura-efatura-tamam');
   await page.evaluate(() => closeModal());

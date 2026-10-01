@@ -256,6 +256,17 @@ const TRANSACTIONAL = [
 ];
 
 const CATALOGUE = [
+  /*
+   * The supplier-line memory is CATALOGUE, not trading.
+   *
+   * It says "when Atlas Gıda writes 'Un 25 kg (çuval)', that is our flour" -
+   * a fact about the menu and the supplier list, like a recipe, not a thing
+   * that happened on a Tuesday. So "Hareket sil" after a demonstration KEEPS
+   * it, exactly as it keeps the products and the suppliers it refers to, and
+   * only "Her şeyi sil" takes it with them. Clearing it with the bills would
+   * quietly make every supplier's next invoice arrive unmatched again.
+   */
+  'alis_satir_eslesme',
   'price_change_log', 'product_price_history', 'product_costs', 'pricing_suggestions',
   'product_recipes', 'product_stock',
   'qr_products', 'qr_categories', 'products', 'categories',

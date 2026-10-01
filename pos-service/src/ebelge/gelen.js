@@ -36,6 +36,7 @@
 const crypto = require('crypto');
 const db = require('../db');
 const E = require('./index');
+const envanter = require('../modules/inventory');
 
 const YANIT_GUN = 8;
 
@@ -330,21 +331,47 @@ async function alisaAktar(ctx, id) {
        VALUES (?,?,'purchase',?,?,?,'draft','api',?,?,NOW())`,
       [clientId, supId, g.belge_no || null, g.belge_tarihi || g.gelis_tarihi || E.simdi().slice(0, 10),
        (Number(g.tutar_minor) || 0) / 100, 'Gelen e-Fatura ETTN ' + g.uuid, (ctx && ctx.userId) || 0]);
+    /*
+     * WHAT THIS SUPPLIER CALLED IT LAST TIME.
+     *
+     * The lines are the supplier's own words, so the first invoice from a new
+     * supplier arrives unmatched and a person decides what each line is. That
+     * decision was written down when they approved it (see
+     * inventory.approveDocument), so from the second invoice on the lines
+     * arrive already pointing at the right material and the whole thing is one
+     * Onayla.
+     *
+     * Matched is NOT approved. Nothing reaches the stock ledger until a person
+     * presses the button - a remembered mapping is a good guess, and a good
+     * guess is not a reason to move stock and restate costs by itself.
+     */
+    const hafiza = new Map();
+    if (supId) {
+      const rows = await t.query(
+        'SELECT raw_key, item_id FROM alis_satir_eslesme WHERE client_id=? AND supplier_id=?',
+        [clientId, supId]);
+      for (const r of rows) hafiza.set(r.raw_key, r.item_id);
+    }
+    let tanindi = 0;
     for (const s of satir) {
       const adet = Number(s.miktar) || 0;
       if (adet <= 0) continue;
+      const itemId = hafiza.get(envanter.satirAnahtari(s.ad)) || null;
+      if (itemId) tanindi++;
       await t.insert(
         `INSERT INTO inventory_document_items (document_id, item_id, raw_name, quantity, unit,
-            unit_price, total_price, vat_rate, vat_amount, is_approved)
-         VALUES (?,NULL,?,?,?,?,?,?,?,0)`,
-        [docId, String(s.ad || '-').slice(0, 255), adet, UBL_BIRIM[s.birim] || 'adet',
+            unit_price, total_price, vat_rate, vat_amount, matched_confidence, is_approved)
+         VALUES (?,?,?,?,?,?,?,?,?,?,0)`,
+        [docId, itemId, String(s.ad || '-').slice(0, 255), adet, UBL_BIRIM[s.birim] || 'adet',
          (Number(s.birimFiyat) || 0) / 100, (Number(s.tutar) || 0) / 100,
-         Number(s.kdvOran) || 0, (Number(s.kdv) || 0) / 100]);
+         Number(s.kdvOran) || 0, (Number(s.kdv) || 0) / 100, itemId ? 100 : null]);
     }
     await t.exec('UPDATE gelen_belge SET document_id=?, supplier_id=? WHERE id=?', [docId, supId, id]);
-    return { ok: true, documentId: docId, supplierId: supId, yeniTedarikci: !sup, satir: satir.length };
+    return { ok: true, documentId: docId, supplierId: supId, yeniTedarikci: !sup,
+             satir: satir.length, tanindi };
   });
-  await E.audit(ctx, 'ebelge.gelen_alis', 'gelen_belge', id, { document_id: out.documentId, satir: out.satir });
+  await E.audit(ctx, 'ebelge.gelen_alis', 'gelen_belge', id,
+    { document_id: out.documentId, satir: out.satir, tanindi: out.tanindi });
   return out;
 }
 

@@ -339,7 +339,16 @@ function subnavHtml(page) {
  * act somebody does before service, not an administrative one, and it used to
  * sit three clicks inside a screen called Yönetim where nobody found it.
  */
-const NAV_ORDER = ['tables', 'bills', 'kasa', 'mutfak',
+const NAV_ORDER = ['tables', 'bills', 'kasa',
+                   /* Faturalar sits right after Kasa, and the order is the
+                      argument: the guest asks for an invoice AFTER paying,
+                      and the invoice is issued against the ÖKC receipt that
+                      payment produced. Above Kasa it would be asking for a
+                      document before the sale it documents.
+                      It spent one release buried under Raporlar, where the
+                      owner looked at the finished build and could not find
+                      it at all - hence top level, just not this far up. */
+                   'faturalar', 'mutfak',
                    /* Paket Servis sits after the service run - seat them,
                       take the bill, take the money, watch the screens - and
                       before the menu admin. It is worked all evening, so it

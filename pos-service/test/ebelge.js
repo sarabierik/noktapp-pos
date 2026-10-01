@@ -889,6 +889,36 @@ const oku = (id) => db.one('SELECT * FROM invoices WHERE id=?', [id]);
     assert.strictEqual(satir[0].item_id, null, 'urun eslestirilmis gibi yazilmis');
     const tekrar = await G.alisaAktar(CTX, g0.id);
     assert.ok(tekrar.zaten, 'ikinci aktarim ikinci alis belgesi acti');
+
+    /*
+     * THE SECOND INVOICE FROM THE SAME SUPPLIER arrives already matched.
+     * A person decides what "Un 25kg" is once, when they approve; after that
+     * the same line from the same supplier is not asked about again. Matched
+     * still is not approved - nothing reaches the stock ledger by itself.
+     */
+    const envanter = require('../src/modules/inventory');
+    const malzeme = await db.value('SELECT id FROM inventory_items WHERE client_id=? LIMIT 1', [CID]);
+    if (malzeme) {
+      await db.exec('UPDATE inventory_document_items SET item_id=? WHERE document_id=?', [malzeme, a.documentId]);
+      await envanter.approveDocument(CID, a.documentId, 1);
+      const ogrenilen = await db.one(
+        'SELECT item_id, hits FROM alis_satir_eslesme WHERE client_id=? AND supplier_id=? AND raw_key=?',
+        [CID, a.supplierId, envanter.satirAnahtari('Un 25kg')]);
+      assert.ok(ogrenilen, 'onaydan sonra satir eslesmesi ogrenilmedi');
+      assert.strictEqual(Number(ogrenilen.item_id), Number(malzeme));
+
+      /* a fresh incoming invoice from the same supplier */
+      Q.gelen = [{ no: 'TDR2026000000009', tarih: '20260929', ettn: 'dddddddd-1111-2222-3333-444444444444', senaryo: 'TEMELFATURA' }];
+      await G.cek(CTX);
+      const yeni = (await G.liste({})).find((x) => x.belge_no === 'TDR2026000000009');
+      const b = await G.alisaAktar(CTX, yeni.id);
+      assert.ok(b.ok, b.error);
+      assert.strictEqual(b.tanindi, 1, 'ayni tedarikcinin ayni satiri yeniden sorulyor');
+      const satirlar2 = await db.query('SELECT item_id, matched_confidence FROM inventory_document_items WHERE document_id=?', [b.documentId]);
+      assert.strictEqual(Number(satirlar2[0].item_id), Number(malzeme), 'satir malzemeye baglanmadi');
+      const doc2 = await db.one('SELECT status FROM inventory_documents WHERE id=?', [b.documentId]);
+      assert.strictEqual(doc2.status, 'draft', 'TANINAN satir kendiliginden ONAYLANMIS: stok tahminle hareket eder');
+    }
     assert.strictEqual(Number(await db.value("SELECT COUNT(*) FROM suppliers WHERE client_id=? AND vkn='1234567890'", [CID])), 1);
 
     const red = (await G.liste({})).find((x) => x.yanit === 'RED');

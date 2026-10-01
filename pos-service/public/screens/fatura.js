@@ -31,10 +31,23 @@ registerIcon('gelenfatura',
 registerIcon('efatura',
   '<rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M7 9.5h6M7 13h4"/><path d="M15.5 15.5h2.5"/>');
 
+/*
+ * FATURALAR IS ITS OWN PLACE IN THE SIDEBAR, next to Adisyonlar.
+ *
+ * It was first registered as the sixth tab under Raporlar, and the owner
+ * looked at the finished build and said there was nowhere to make or see an
+ * invoice. He was right. A fatura is not a report - it is something a cashier
+ * does at the counter while a guest waits, and the guest asks for it on the
+ * same evening they ate. Raporlar is where you go at the end of the month.
+ *
+ * Gelen faturalar rides underneath it as a tab, because outgoing and incoming
+ * are two directions of one thing and nobody thinks of them as separate
+ * screens.
+ */
 registerPage({ id: 'faturalar', label: 'Faturalar', icon: 'faturalar',
-  perm: 'report.view', group: 'reports' }, 'islemler');
+  perm: 'report.view' });
 registerPage({ id: 'gelenfatura', label: 'Gelen faturalar', icon: 'gelenfatura',
-  perm: 'report.view', group: 'reports' }, 'faturalar');
+  perm: 'report.view', group: 'faturalar' }, 'faturalar');
 registerPage({ id: 'efatura', label: 'e-Fatura / e-Arşiv', icon: 'efatura',
   perm: 'fatura.manage', group: 'isletme' }, 'okcdefter');
 
@@ -82,6 +95,7 @@ Screens.add({
         <h2 class="page-title" style="margin:0">Faturalar</h2><div class="spacer"></div>
         <span class="muted" style="font-size:13px;margin-right:10px" id="ftEbDurum"></span>
         ${can('fatura.manage') ? '<button class="btn btn--ghost" id="ftAyar">e-Fatura ayarları</button>' : ''}
+        ${can('fatura.kes') ? '<button class="btn btn--primary" id="ftKes">Fatura kes</button>' : ''}
       </div>
       <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:14px">
         <input class="input" id="ftQ" placeholder="fatura no, ünvan ya da VKN" style="max-width:280px">
@@ -97,6 +111,7 @@ Screens.add({
       <div id="ftBody"><div class="empty">Yükleniyor…</div></div></div>`;
 
     if (can('fatura.manage')) $('#ftAyar').onclick = () => go('efatura');
+    if ($('#ftKes')) $('#ftKes').onclick = () => this.ftAdisyonSec();
     $('#ftAra').onclick = () => this.ftDraw();
     $('#ftQ').onkeydown = (e) => { if (e.key === 'Enter') this.ftDraw(); };
     $('#ftDurum').onchange = () => this.ftDraw();
@@ -114,8 +129,8 @@ Screens.add({
 
     if (!r.faturalar.length) {
       $('#ftBody').innerHTML = `<div class="empty">Bu aralıkta fatura yok.
-        <div class="muted" style="margin-top:6px">Müşteri fatura isterse Adisyonlar ekranından
-        kapanmış adisyonu açıp <b>Fatura kes</b> deyin.</div></div>`;
+        <div class="muted" style="margin-top:6px">Misafir fatura isterse yukarıdaki
+        <b>Fatura kes</b> düğmesine basın ve kapanmış adisyonu seçin.</div></div>`;
       return;
     }
     $('#ftBody').innerHTML = `<div class="card"><div class="card__head">
@@ -140,6 +155,96 @@ Screens.add({
       </tr>`).join('')}
       </tbody></table></div>`;
     for (const b of $$('[data-fid]')) b.onclick = () => this.faturaDialog(b.getAttribute('data-fid'));
+  },
+
+  /*
+   * WHICH BILL? The step that was missing.
+   *
+   * Issuing an invoice always starts from a closed adisyon - that is what the
+   * OKC receipt was printed for and what the invoice is issued against. Until
+   * now the only way in was to already be looking at that bill on the
+   * Adisyonlar screen, which assumes the cashier knows which one the guest
+   * means before they have looked anything up. Here they pick it.
+   *
+   * Bills that have already been invoiced are shown with their invoice number
+   * rather than hidden, because "I already did this one" is the question the
+   * cashier actually has, and a bill can legitimately be invoiced again for
+   * the lines that were left out of a split.
+   */
+  async ftAdisyonSec() {
+    const bugun = new Date();
+    const gun = (d) => {
+      const p = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    };
+    let tarih = gun(bugun);
+
+    const ciz = async () => {
+      modal(`
+        <div class="modal__head"><h3>Fatura kesilecek adisyon</h3>
+          <div class="spacer"></div><button class="close-x" data-close="1">✕</button></div>
+        <div class="modal__body">
+          <div class="row" style="gap:8px;margin-bottom:12px">
+            <input class="input" type="date" id="fasTarih" value="${tarih}" style="max-width:180px">
+            <input class="input" id="fasQ" placeholder="adisyon no, masa ya da garson" style="max-width:260px">
+            <div class="spacer"></div>
+            <span class="muted" style="font-size:12.5px">Yalnızca kapanmış adisyonlar</span>
+          </div>
+          <div id="fasBody"><div class="empty">Yükleniyor…</div></div>
+        </div>`, { wide: true });
+
+      $('#fasTarih').onchange = () => { tarih = $('#fasTarih').value; ciz(); };
+
+      let r;
+      try { r = await api('GET', `/api/pos/orders/recent-closed?date=${tarih}`); }
+      catch (e) { $('#fasBody').innerHTML = `<div class="alert alert--error">${esc(e.message)}</div>`; return; }
+      const hepsi = r.orders || [];
+      if (!hepsi.length) {
+        $('#fasBody').innerHTML = '<div class="empty">Bu günde kapanmış adisyon yok.</div>';
+        return;
+      }
+      /* which of them already carry an invoice */
+      let kesilmis = {};
+      try {
+        const f = await api('GET', '/api/ebelge/faturalar?gun=400');
+        for (const x of f.faturalar) {
+          if (x.order_id && x.status !== 'cancelled') (kesilmis[x.order_id] = kesilmis[x.order_id] || []).push(x);
+        }
+      } catch (e) { kesilmis = {}; }
+
+      const ciz2 = () => {
+        const q = fold($('#fasQ').value || '');
+        const rows = hepsi.filter(o => !q
+          || fold(String(o.adisyon_no || '')).includes(q)
+          || fold(o.table_name || '').includes(q)
+          || fold(o.waiter_name || '').includes(q));
+        $('#fasBody').innerHTML = rows.length ? `<table class="tbl"><thead><tr>
+            <th>Adisyon</th><th>Masa</th><th>Garson</th><th>Kapanış</th>
+            <th class="right">Tutar</th><th>Fatura</th><th class="right"></th>
+          </tr></thead><tbody>
+          ${rows.map(o => {
+            const f = kesilmis[o.id] || [];
+            return `<tr>
+              <td class="mono">#${o.adisyon_no}${o.bill_label ? ' · ' + esc(o.bill_label) : ''}</td>
+              <td>${esc(o.table_name || 'Hızlı satış')}</td>
+              <td class="muted">${esc(o.waiter_name || '—')}</td>
+              <td class="muted">${String(o.closed_at || '').slice(11, 16)}</td>
+              <td class="right mono">${tl(o.grand_total)} ₺</td>
+              <td>${f.length
+                ? f.map(x => `<span class="badge badge--gray mono">${esc(x.full_no)}</span>`).join(' ')
+                : '<span class="muted">—</span>'}</td>
+              <td class="right"><button class="btn ${f.length ? 'btn--ghost' : 'btn--primary'} btn--sm"
+                data-oid="${o.id}">${f.length ? 'Yine kes' : 'Fatura kes'}</button></td></tr>`;
+          }).join('')}
+          </tbody></table>` : '<div class="empty">Eşleşen adisyon yok.</div>';
+        for (const b of $$('[data-oid]')) {
+          b.onclick = () => { closeModal(); this.faturaKesDialog(b.getAttribute('data-oid')); };
+        }
+      };
+      $('#fasQ').oninput = ciz2;
+      ciz2();
+    };
+    await ciz();
   },
 
   /** Bir fatura: kalemleri, e-belge kartı ve yapılabilecek her şey. */
@@ -551,7 +656,8 @@ Screens.add({
               : g.yanit === 'RED' ? '<p class="muted" style="margin:0">Reddedilen fatura alışa aktarılmaz.</p>'
               : can('stock.manage') ? `<button class="btn btn--ghost" id="gdAlis">Alışa aktar</button>
                   <div class="muted" style="font-size:12px;margin-top:6px">Tedarikçi VKN ile bulunur (yoksa açılır),
-                    satırlar taslak alışa yazılır. Ürün eşleştirmesini ve stoğa işlemeyi siz onaylarsınız.</div>`
+                    satırlar taslak alışa yazılır. Bu tedarikçinin daha önce eşleştirdiğiniz satırları
+                    kendiliğinden tanınır; onayladığınız anda stoğa ve maliyete girer.</div>`
               : '<p class="muted" style="margin:0">Alışa aktarmak için stok yetkisi gerekir.</p>'}
           </div>
         </div>
@@ -591,7 +697,14 @@ Screens.add({
         try {
           const a = await api('POST', `/api/ebelge/gelen/${g.id}/alis`);
           toast(a.zaten ? 'Bu fatura zaten alışa aktarılmış.'
-            : `Taslak alış oluşturuldu${a.yeniTedarikci ? ' (tedarikçi de açıldı)' : ''}. Satırları eşleştirip stoğa işleyin.`, 'ok');
+            : `Taslak alış oluşturuldu${a.yeniTedarikci ? ' (tedarikçi de açıldı)' : ''}. `
+              + (a.satir
+                ? (a.tanindi === a.satir
+                    ? `${a.satir} satırın hepsi tanındı — Stok ekranında onaylayın.`
+                    : a.tanindi
+                      ? `${a.satir} satırın ${a.tanindi} tanesi tanındı; kalanını eşleştirip onaylayın.`
+                      : 'Satırları malzemelere eşleştirip onaylayın.')
+                : ''), 'ok');
           closeModal(); this.glDraw();
         } catch (e) { err(e); this.gelenDialog(g.id); }
       };

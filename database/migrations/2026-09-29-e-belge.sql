@@ -219,3 +219,34 @@ CREATE TABLE IF NOT EXISTS `gelen_belge` (
 ALTER TABLE `gelen_belge` DROP INDEX IF EXISTS `uq_gelen`;
 ALTER TABLE `gelen_belge`
   ADD UNIQUE KEY IF NOT EXISTS `uq_gelen_ortam` (`client_id`,`ortam`,`uuid`);
+
+-- 6. Alis satiri -> malzeme hafizasi ------------------------------------------
+--
+-- Gelen e-Faturanin satirlari TEDARIKCININ yazdigi serbest metindir: "Un 25 kg
+-- (cuval)". Hangi malzemeye karsilik geldigini program bilemez, bu yuzden
+-- aktarilan belge TASLAK kalir ve onaylanana kadar stokta hicbir sey kimildamaz
+-- (onay, inventory_stock_ledger'a yazan tek kapidir).
+--
+-- Otomatik onay yanlis olurdu: tahminle stok hareketi yazmak, yanlis maliyetle
+-- kar/zarar demektir. Otomatik ESLESTIRME ise dogru: bir satiri bir kez elle
+-- bagladiktan sonra, ayni tedarikcinin ayni satiri bir daha sorulmaz.
+--
+-- Anahtar raw_key: ad kucultulup bosluk/noktalama sadelestirilmis hali.
+-- Kucultme Turkce yerelle DEGIL duz toLowerCase ile yapilir - "I" harfi
+-- yerele gore iki ayri sonuc verir ve anahtar kendi kendisiyle tutmaz.
+CREATE TABLE IF NOT EXISTS `alis_satir_eslesme` (
+  `id`            bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `client_id`     int(11) NOT NULL,
+  `supplier_id`   int(11) DEFAULT NULL,
+  `raw_key`       varchar(190) NOT NULL COMMENT 'Sadelestirilmis satir adi',
+  `raw_name`      varchar(255) NOT NULL COMMENT 'Tedarikcinin yazdigi hali',
+  `item_id`       int(11) NOT NULL COMMENT 'inventory_items.id',
+  `unit`          varchar(20) DEFAULT NULL,
+  `last_unit_price` decimal(12,4) DEFAULT NULL,
+  `hits`          int(11) NOT NULL DEFAULT 1,
+  `created_at`    datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at`    datetime DEFAULT NULL ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_eslesme` (`client_id`,`supplier_id`,`raw_key`),
+  KEY `ix_eslesme_item` (`client_id`,`item_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_turkish_ci;

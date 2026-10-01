@@ -352,6 +352,25 @@ async function saveDocument(clientId, data, userId) {
   });
 }
 
+/*
+ * The key a supplier's line is remembered under.
+ *
+ * Deliberately plain toLowerCase() and NOT toLocaleLowerCase('tr'): the
+ * Turkish locale maps I and ı in a way that is right for reading and wrong
+ * for a lookup key, and this project has already lost an afternoon to it
+ * (settings.deleteDevice read 'PRODUCTION' as 'productıon'). Both sides of
+ * the comparison go through this one function, so consistency is what
+ * matters, not linguistic correctness.
+ */
+function satirAnahtari(ad) {
+  return String(ad || '')
+    .toLowerCase()
+    .replace(/[^0-9a-zçğıiöşü]+/gi, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, 190);
+}
+
 /** Approving is what commits the stock. It is the only door into the ledger for a purchase. */
 async function approveDocument(clientId, docId, userId) {
   return db.tx(async t => {
@@ -380,6 +399,32 @@ async function approveDocument(clientId, docId, userId) {
     await t.exec(
       "UPDATE inventory_documents SET status='approved', approved_by=?, approved_at=NOW() WHERE id=?",
       [userId || null, docId]);
+    /*
+     * REMEMBER WHAT THE SUPPLIER CALLS IT.
+     *
+     * A supplier's invoice line is free text they wrote - "Un 25 kg (çuval)" -
+     * and nothing in it says which of the restaurant's materials it is. Someone
+     * has to decide that once. Writing the decision down here means the SAME
+     * line, from the SAME supplier, arrives already matched next month, and an
+     * incoming e-Fatura becomes one Onayla instead of a re-typing exercise.
+     *
+     * It is recorded on APPROVAL, not on edit, because approval is the moment
+     * a person stood behind the mapping. A draft someone was still fiddling
+     * with is not a decision.
+     */
+    if (doc.supplier_id) {
+      for (const l of lines) {
+        const key = satirAnahtari(l.raw_name);
+        if (!key || !l.item_id) continue;
+        await t.exec(
+          `INSERT INTO alis_satir_eslesme (client_id, supplier_id, raw_key, raw_name, item_id, unit, last_unit_price, hits)
+           VALUES (?,?,?,?,?,?,?,1)
+           ON DUPLICATE KEY UPDATE item_id=VALUES(item_id), raw_name=VALUES(raw_name),
+             unit=VALUES(unit), last_unit_price=VALUES(last_unit_price), hits=hits+1`,
+          [clientId, doc.supplier_id, key, String(l.raw_name || '').slice(0, 255),
+           l.item_id, l.unit || null, l.unit_price || null]).catch(() => {});
+      }
+    }
     return { approved: true, lines: lines.length };
   });
 }
@@ -1037,6 +1082,7 @@ async function levelsByLocation(clientId, itemId) {
 /* ====================================================================== */
 
 module.exports = {
+  satirAnahtari,
   UNIT_LABEL, WASTE_REASONS,
   units, customUnits, saveCustomUnit, deleteCustomUnit, categories, saveCategory,
   locations, defaultLocation, saveLocation,
