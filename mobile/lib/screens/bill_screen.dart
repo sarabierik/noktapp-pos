@@ -212,12 +212,21 @@ class _BillScreenState extends State<BillScreen> with AutomaticKeepAliveClientMi
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Padding(padding: EdgeInsets.all(16),
               child: Text('İndirim', style: TextStyle(fontWeight: FontWeight.w700))),
+          // A fixed 78px box could not hold "%10" once Material's default
+          // 24px horizontal padding was taken out of it, so the label broke
+          // across two lines and the sheet read "%1 / 0". Let the chip size
+          // itself to its text and refuse to wrap: the number is the whole
+          // point of the button.
           Wrap(spacing: 10, runSpacing: 10, children: [
             for (final p in [5.0, 10.0, 15.0, 20.0])
-              SizedBox(width: 78, height: 48,
-                  child: OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx, p),
-                      child: Text('%${p.toStringAsFixed(0)}'))),
+              OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx, p),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(92, 52),
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                  ),
+                  child: Text('%${p.toStringAsFixed(0)}',
+                      maxLines: 1, softWrap: false)),
           ]),
           const SizedBox(height: 16),
         ]),
