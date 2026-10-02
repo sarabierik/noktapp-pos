@@ -81,7 +81,7 @@ class _BillScreenState extends State<BillScreen> with AutomaticKeepAliveClientMi
       await Api.instance.call('POST', '/api/mobile/orders/${widget.orderId}/print', {});
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Hesap fisi kasadaki yaziciya gonderildi'), backgroundColor: NokTheme.ok));
+          content: Text('Hesap fişi kasadaki yazıcıya gönderildi'), backgroundColor: NokTheme.ok));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -95,12 +95,12 @@ class _BillScreenState extends State<BillScreen> with AutomaticKeepAliveClientMi
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.white,
-        title: const Text('Hesabi e-posta ile gonder'),
+        title: const Text('Hesabı e-posta ile gönder'),
         content: TextField(controller: c, autofocus: true, keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(labelText: 'Misafirin e-postasi')),
+            decoration: const InputDecoration(labelText: 'Misafirin e-postası')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgec')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, c.text.trim()), child: const Text('Gonder')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, c.text.trim()), child: const Text('Gönder')),
         ],
       ),
     );
@@ -109,7 +109,7 @@ class _BillScreenState extends State<BillScreen> with AutomaticKeepAliveClientMi
       await Api.instance.call('POST', '/api/mobile/orders/${widget.orderId}/mail', {'email': email});
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Hesap $email adresine gonderiliyor'), backgroundColor: NokTheme.ok));
+          content: Text('Hesap $email adresine gönderiliyor'), backgroundColor: NokTheme.ok));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -294,7 +294,7 @@ class _BillScreenState extends State<BillScreen> with AutomaticKeepAliveClientMi
     final name = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Adisyon adi'),
+        title: const Text('Adisyon adı'),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           TextField(
             controller: c,
@@ -302,7 +302,7 @@ class _BillScreenState extends State<BillScreen> with AutomaticKeepAliveClientMi
             textCapitalization: TextCapitalization.words,
             maxLength: 24,
             decoration: const InputDecoration(
-              hintText: 'Ahmet, pencere kenari, kirmizi mont...',
+              hintText: 'Ahmet, pencere kenarı, kırmızı mont...',
               counterText: '',
             ),
             onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
@@ -310,12 +310,12 @@ class _BillScreenState extends State<BillScreen> with AutomaticKeepAliveClientMi
           const SizedBox(height: 6),
           const Align(
             alignment: Alignment.centerLeft,
-            child: Text('Bu isim fiste ve kasada gorunur. Bos birakirsan harf (A, B, C) kalir.',
+            child: Text('Bu isim fişte ve kasada görünür. Boş bırakırsan harf (A, B, C) kalır.',
                 style: TextStyle(fontSize: 12, color: NokTheme.ink3)),
           ),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgec')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
           FilledButton(
               onPressed: () => Navigator.pop(ctx, c.text.trim()),
               child: const Text('Kaydet')),
@@ -336,7 +336,7 @@ class _BillScreenState extends State<BillScreen> with AutomaticKeepAliveClientMi
   /*
    * ADİSYON NOTU AND MUTFAK NOTU.
    *
-   * A line note is about a dish - "acisiz", "buzsuz". This is about the table,
+   * A line note is about a dish - "acısız", "buzsuz". This is about the table,
    * and it had nowhere to live: "pasta 21:30 gelecek", "fatura istiyor",
    * "alerji: fistik" were told to one waiter and then existed only in his
    * head until he happened to be standing next to whoever needed them.
@@ -388,7 +388,7 @@ class _BillScreenState extends State<BillScreen> with AutomaticKeepAliveClientMi
               const Text('Adisyon notu',
                   style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
-              const Text('Hesap fisinde ve mutfak fisinde gorunur.',
+              const Text('Hesap fişinde ve mutfak fişinde görünür.',
                   style: TextStyle(color: NokTheme.ink3, fontSize: 12.5)),
               const SizedBox(height: 10),
               TextField(
@@ -405,7 +405,7 @@ class _BillScreenState extends State<BillScreen> with AutomaticKeepAliveClientMi
               const Text('Mutfak notu',
                   style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
-              const Text('YALNIZCA mutfak fisine basilir. Musterinin hesabinda gorunmez.',
+              const Text('YALNIZCA mutfak fişine basılır. Müşterinin hesabında görünmez.',
                   style: TextStyle(color: NokTheme.ink3, fontSize: 12.5)),
               const SizedBox(height: 10),
               TextField(
@@ -415,14 +415,14 @@ class _BillScreenState extends State<BillScreen> with AutomaticKeepAliveClientMi
                 minLines: 1,
                 textCapitalization: TextCapitalization.sentences,
                 decoration: const InputDecoration(
-                    hintText: 'Acele, cocuk icin once ciksin...', counterText: ''),
+                    hintText: 'Acele, çocuk için önce çıksın...', counterText: ''),
               ),
               const SizedBox(height: 18),
               Row(children: [
                 const Spacer(),
                 TextButton(
                     onPressed: busy ? null : () => Navigator.of(sheetCtx).pop(false),
-                    child: const Text('Vazgec')),
+                    child: const Text('Vazgeç')),
                 const SizedBox(width: 8),
                 FilledButton(
                   onPressed: busy ? null : kaydet,
@@ -786,7 +786,7 @@ class _BillScreenState extends State<BillScreen> with AutomaticKeepAliveClientMi
           ],
           Text('Adisyon #${o['adisyon_no']}', style: const TextStyle(fontWeight: FontWeight.w600)),
           const Spacer(),
-          Text(o['status'] == 'open' ? 'acik' : 'kapali',
+          Text(o['status'] == 'open' ? 'açık' : 'kapali',
               style: TextStyle(color: o['status'] == 'open' ? NokTheme.orangeDark : NokTheme.ok)),
         ]),
         const Divider(height: 22, color: NokTheme.line),

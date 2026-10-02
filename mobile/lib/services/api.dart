@@ -230,7 +230,7 @@ class Api {
      * And the failure was swallowed by `catch (_)`, so a phone that simply
      * could not see the till fell through to the relay, the relay answered 401
      * because it has never heard of that device, and the waiter was told
-     * "Oturum sona erdi. Tekrar baglanin." He would then re-pair, which cannot
+     * "Oturum sona erdi. Tekrar bağlanın." He would then re-pair, which cannot
      * help, and phone his boss. The message named the wrong problem, which is
      * worse than naming none: it sent people to fix something that was not
      * broken. Now the reason is carried out of the catch and used.
@@ -248,14 +248,14 @@ class Api {
            would only ask the same question a slower way. */
         rethrow;
       } catch (_) {
-        lanFailure = ApiException('Kasaya ulasilamiyor. Telefon restoranin '
-            'wifi agina bagli mi?', offline: true);
+        lanFailure = ApiException('Kasaya ulaşılamıyor. Telefon restoranın '
+            'wifi ağına bağlı mı?', offline: true);
       }
     }
 
     // 2) through the cloud relay
     if (clientId == null) {
-      throw lanFailure ?? ApiException('Kasaya ulasilamadi. Ayni agda misiniz?', offline: true);
+      throw lanFailure ?? ApiException('Kasaya ulaşılamadı. Aynı ağda mısınız?', offline: true);
     }
     lastCallUsedRelay = true;
     try {
@@ -286,7 +286,7 @@ class Api {
       rethrow;
     } catch (_) {
       throw lanFailure ?? ApiException(
-          'Ne kasaya ne internete ulasilabiliyor. Baglantiyi kontrol edin.', offline: true);
+          'Ne kasaya ne internete ulaşılabiliyor. Bağlantıyı kontrol edin.', offline: true);
     }
   }
 
@@ -327,11 +327,11 @@ class Api {
     try {
       json = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     } catch (_) {
-      throw ApiException('Beklenmeyen yanit (${res.statusCode})');
+      throw ApiException('Beklenmeyen yanıt (${res.statusCode})');
     }
-    if (res.statusCode == 401) throw ApiException('Oturum sona erdi. Tekrar baglanin.', unauthorised: true);
-    if (res.statusCode == 403) throw ApiException('Bu islem icin yetkiniz yok.');
-    if (json['ok'] == false) throw ApiException(json['error']?.toString() ?? 'Islem tamamlanamadi');
+    if (res.statusCode == 401) throw ApiException('Oturum sona erdi. Tekrar bağlanın.', unauthorised: true);
+    if (res.statusCode == 403) throw ApiException('Bu işlem için yetkiniz yok.');
+    if (json['ok'] == false) throw ApiException(json['error']?.toString() ?? 'İşlem tamamlanamadı');
     if (json['addresses'] != null) _learnAddresses(json['addresses']);
     return json;
   }
@@ -422,8 +422,8 @@ class Api {
               }))
           .timeout(const Duration(seconds: 45));
     } else {
-      throw ApiException('Kasa bulunamadi. Ilk baglanti icin restoranin wifi '
-          'agina baglanin veya kasadaki karekodu okutun.');
+      throw ApiException('Kasa bulunamadı. İlk bağlantı için restoranın wifi '
+          'ağına bağlanın veya kasadaki karekodu okutun.');
     }
     final json = _decode(res);
     token = json['token'] as String;

@@ -116,7 +116,7 @@ class _OrderScreenState extends State<OrderScreen> {
   /// Tapping a product adds a WHOLE portion. The half is something a guest
   /// asks for, so it is asked for on the line, not here.
   void _add(Product p) {
-    // a line WITH a note never merges with one without: "sogansiz" is not a
+    // a line WITH a note never merges with one without: "soğansız" is not a
     // quantity, and the kitchen slip has to be able to say which one it is
     final same = draft.where((l) => l.product.id == p.id && l.note == null);
     setState(() {
@@ -161,14 +161,14 @@ class _OrderScreenState extends State<OrderScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.white,
-        title: const Text('Adisyon degistirilsin mi?'),
-        content: const Text('Sepetteki urunler secilen adisyona yazilacak.'),
+        title: const Text('Adisyon değiştirilsin mi?'),
+        content: const Text('Sepetteki ürünler seçilen adisyona yazılacak.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Vazgec', style: TextStyle(color: NokTheme.ink2))),
+              child: const Text('Vazgeç', style: TextStyle(color: NokTheme.ink2))),
           FilledButton(
-              onPressed: () => Navigator.pop(ctx, true), child: const Text('Degistir')),
+              onPressed: () => Navigator.pop(ctx, true), child: const Text('Değiştir')),
         ],
       ),
     );
@@ -240,7 +240,7 @@ class _OrderScreenState extends State<OrderScreen> {
        */
       setState(() { _billSurum++; sepetAcik = false; });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Siparis mutfaga gonderildi'), backgroundColor: NokTheme.ok));
+          content: Text('Sipariş mutfağa gönderildi'), backgroundColor: NokTheme.ok));
     } catch (e) {
       // no connection: keep it on the phone and replay it later, carrying the
       // chosen bill with it. A queued round that "finds a bill" at replay time
@@ -264,7 +264,7 @@ class _OrderScreenState extends State<OrderScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text(
-              'Baglanti yok - siparis telefonda saklandi, baglanti gelince gonderilecek'),
+              'Bağlantı yok — sipariş telefonda saklandı, bağlantı gelince gönderilecek'),
           backgroundColor: NokTheme.orangeDark,
           duration: Duration(seconds: 4)));
       Navigator.of(context).pop();
@@ -283,13 +283,13 @@ class _OrderScreenState extends State<OrderScreen> {
   Future<String?> _noteSheet(String productName, String initial, String action) {
     final c = TextEditingController(text: initial);
     const chips = [
-      'az pismis',
+      'az pişmiş',
       'orta',
-      'iyi pismis',
-      'sogansiz',
-      'acisiz',
+      'iyi pişmiş',
+      'soğansız',
+      'acısız',
       'az buzlu',
-      'ayri gelsin'
+      'ayrı gelsin'
     ];
     return showModalBottomSheet<String>(
       context: context,
@@ -338,7 +338,7 @@ class _OrderScreenState extends State<OrderScreen> {
                     controller: c,
                     autofocus: true,
                     textCapitalization: TextCapitalization.sentences,
-                    decoration: const InputDecoration(hintText: 'ornek: sogansiz, az pismis')),
+                    decoration: const InputDecoration(hintText: 'örnek: soğansız, az pişmiş')),
                 const SizedBox(height: 12),
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   for (final t in chips)
@@ -361,7 +361,7 @@ class _OrderScreenState extends State<OrderScreen> {
                   Expanded(
                       child: OutlinedButton(
                           onPressed: () => Navigator.pop(ctx),
-                          child: const Text('Vazgec'))),
+                          child: const Text('Vazgeç'))),
                   const SizedBox(width: 10),
                   Expanded(
                       child: FilledButton(
@@ -586,7 +586,7 @@ class _OrderScreenState extends State<OrderScreen> {
                   const Spacer(),
                   TextButton(
                       onPressed: busy ? null : () => Navigator.of(sheetCtx).pop(false),
-                      child: const Text('Vazgec')),
+                      child: const Text('Vazgeç')),
                   const SizedBox(width: 8),
                   FilledButton(
                     onPressed: busy ? null : kaydet,
@@ -672,7 +672,7 @@ class _OrderScreenState extends State<OrderScreen> {
           child: TextField(
             onChanged: (v) => setState(() => search = v),
             decoration: const InputDecoration(
-                hintText: 'Urun ara',
+                hintText: 'Ürün ara',
                 prefixIcon: Icon(Icons.search, color: NokTheme.ink3),
                 contentPadding: EdgeInsets.symmetric(vertical: 4, horizontal: 12)),
           ),
@@ -979,7 +979,7 @@ class _OrderScreenState extends State<OrderScreen> {
                 height: 46,
                 child: FilledButton(
                     onPressed: sending ? null : _send,
-                    child: Text(sending ? 'Gonderiliyor...' : 'Mutfaga gonder')),
+                    child: Text(sending ? 'Gönderiliyor...' : 'Mutfağa gönder')),
               ),
             ),
           ]),

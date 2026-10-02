@@ -39,12 +39,12 @@ class _PairScreenState extends State<PairScreen> {
         MaterialPageRoute(builder: (_) => const ScanScreen()));
     if (qr == null || !mounted) return;
 
-    setState(() { _busy = true; _status = 'Kasaya baglaniliyor...'; });
+    setState(() { _busy = true; _status = 'Kasaya bağlanılıyor...'; });
     /* If the till is not on this wifi the token goes through the cloud, and
        that takes a few seconds longer - so the screen says so rather than
        looking frozen. */
     Future.delayed(const Duration(seconds: 4), () {
-      if (mounted && _busy) setState(() => _status = 'Ayni agda degil - internet uzerinden baglaniliyor...');
+      if (mounted && _busy) setState(() => _status = 'Aynı ağda değil — internet üzerinden bağlanılıyor...');
     });
     try {
       await Api.instance.pairWithQr(qr, phoneName: _name.text.trim());
@@ -62,9 +62,9 @@ class _PairScreenState extends State<PairScreen> {
       setState(() {
         _busy = false;
         _status = '';
-        _error = msg.contains('Kasa bulunamadi')
-            ? 'Karekod okundu ama kasaya ulasilamadi. Kasa bilgisayari acik mi? '
-              'Ayni agda degilseniz kasanin internete bagli olmasi gerekir.'
+        _error = msg.contains('Kasa bulunamadı')
+            ? 'Karekod okundu ama kasaya ulaşılamadı. Kasa bilgisayarı açık mı? '
+              'Aynı ağda değilseniz kasanın internete bağlı olması gerekir.'
             : msg;
       });
     } finally {
@@ -73,7 +73,7 @@ class _PairScreenState extends State<PairScreen> {
   }
 
   Future<void> _pair() async {
-    setState(() { _busy = true; _error = null; _addrNote = null; _status = 'Kasa araniyor...'; });
+    setState(() { _busy = true; _error = null; _addrNote = null; _status = 'Kasa aranıyor...'; });
     try {
       /*
        * A typed address is tried FIRST and on its own. Discovery is multicast,
@@ -89,7 +89,7 @@ class _PairScreenState extends State<PairScreen> {
           setState(() {
             _busy = false;
             _status = '';
-            _addrNote = 'Bu adreste kasa bulunamadi. Kasa acik mi, telefon ayni agda mi?';
+            _addrNote = 'Bu adreste kasa bulunamadı. Kasa açık mı, telefon aynı ağda mı?';
           });
           return;
         }
@@ -127,12 +127,12 @@ class _PairScreenState extends State<PairScreen> {
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -.3)),
             ]),
             const SizedBox(height: 28),
-            const Text('Kasaya baglan', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -.5)),
+            const Text('Kasaya bağlan', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -.5)),
             const SizedBox(height: 8),
             const Text(
-              'Kasadaki uygulamada Ayarlar > Cihazlar > Telefonlar bolumunden "Telefon bagla" '
-              'deyin, personeli secin ve ekranda cikan karekodu bu telefona okutun. Ilk baglanti '
-              'icin restoranin wifi agina bagli olmalisiniz.',
+              'Kasadaki uygulamada Ayarlar > Cihazlar > Telefonlar bölümünden "Telefon bağla" '
+              'deyin, personeli seçin ve ekranda çıkan karekodu bu telefona okutun. İlk bağlantı '
+              'için restoranın wifi ağına bağlı olmalısınız.',
               style: TextStyle(color: NokTheme.ink2, height: 1.5)),
             const SizedBox(height: 24),
             if (_error != null)
@@ -144,7 +144,7 @@ class _PairScreenState extends State<PairScreen> {
                   border: Border.all(color: const Color(0xFFF5C6C2)),
                   borderRadius: BorderRadius.circular(10)),
                 child: Text(_error!, style: const TextStyle(color: Color(0xFFB42318)))),
-            TextField(controller: _name, decoration: const InputDecoration(labelText: 'Bu telefonun adi')),
+            TextField(controller: _name, decoration: const InputDecoration(labelText: 'Bu telefonun adı')),
             const SizedBox(height: 20),
 
             /* The whole flow, in one button. */
@@ -158,7 +158,7 @@ class _PairScreenState extends State<PairScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            const Text('Karekodu okuttugunuzda sifre sorulmaz.',
+            const Text('Karekodu okuttuğunuzda şifre sorulmaz.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: NokTheme.ink3, fontSize: 12.5)),
             const SizedBox(height: 18),
@@ -178,10 +178,10 @@ class _PairScreenState extends State<PairScreen> {
 
             if (_typing) ...[
               const Divider(height: 28),
-              const Text('Alti haneli kod ile baglan',
+              const Text('Altı haneli kod ile bağlan',
                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
               const SizedBox(height: 4),
-              const Text('Bu yolda kasadaki kullanici adiniz ve telefon sifreniz gerekir.',
+              const Text('Bu yolda kasadaki kullanıcı adınız ve telefon şifreniz gerekir.',
                   style: TextStyle(color: NokTheme.ink3, fontSize: 12.5, height: 1.4)),
               const SizedBox(height: 14),
               TextField(
@@ -190,12 +190,12 @@ class _PairScreenState extends State<PairScreen> {
                 maxLength: 6,
                 style: const TextStyle(fontSize: 26, letterSpacing: 8, fontWeight: FontWeight.w700),
                 textAlign: TextAlign.center,
-                decoration: const InputDecoration(labelText: 'Baglanti kodu', counterText: '')),
+                decoration: const InputDecoration(labelText: 'Bağlantı kodu', counterText: '')),
               const SizedBox(height: 12),
-              TextField(controller: _user, decoration: const InputDecoration(labelText: 'Kullanici adi')),
+              TextField(controller: _user, decoration: const InputDecoration(labelText: 'Kullanıcı adı')),
               const SizedBox(height: 12),
               TextField(controller: _pass, obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Sifre')),
+                  decoration: const InputDecoration(labelText: 'Şifre')),
               const SizedBox(height: 14),
             /*
              * Folded away by default: on a restaurant's own wifi the app finds
@@ -208,7 +208,7 @@ class _PairScreenState extends State<PairScreen> {
                   alignment: Alignment.centerLeft,
                   child: TextButton(
                     onPressed: () => setState(() => _manual = true),
-                    child: const Text('Kasa bulunamiyor mu? Adresi elle gir',
+                    child: const Text('Kasa bulunamıyor mu? Adresi elle gir',
                         style: TextStyle(color: NokTheme.orangeDark, fontWeight: FontWeight.w600)),
                   ),
                 ),
@@ -220,7 +220,7 @@ class _PairScreenState extends State<PairScreen> {
                   decoration: const InputDecoration(
                     labelText: 'Kasa adresi',
                     hintText: '172.16.2.31:7451',
-                    helperText: 'Kasadaki Ayarlar > Cihazlar > Telefonlar ekraninda yazar.',
+                    helperText: 'Kasadaki Ayarlar > Cihazlar > Telefonlar ekranında yazar.',
                     helperMaxLines: 2),
                 ),
                 if (_addrNote != null)
@@ -232,10 +232,10 @@ class _PairScreenState extends State<PairScreen> {
               ],
               const SizedBox(height: 20),
               FilledButton(onPressed: _busy ? null : _pair,
-                  child: Text(_busy ? (_status.isEmpty ? 'Baglaniyor...' : _status) : 'Baglan')),
+                  child: Text(_busy ? (_status.isEmpty ? 'Bağlanıyor...' : _status) : 'Bağlan')),
             ],
             const SizedBox(height: 16),
-            const Text('Sorun yasarsaniz: destek@noktapp.com · 0850 84 00 654',
+            const Text('Sorun yaşarsanız: destek@noktapp.com · 0850 84 00 654',
                 textAlign: TextAlign.center, style: TextStyle(color: NokTheme.ink3, fontSize: 12.5)),
           ]),
         ),

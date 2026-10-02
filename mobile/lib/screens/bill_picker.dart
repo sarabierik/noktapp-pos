@@ -103,12 +103,12 @@ Future<BillChoice?> pickBill(BuildContext context, String tableName, TableBills 
                 decoration: BoxDecoration(
                     color: const Color(0xFFFFF1E8),
                     borderRadius: BorderRadius.circular(12)),
-                child: Text('${data.bills.length} acik adisyon',
+                child: Text('${data.bills.length} açık adisyon',
                     style: const TextStyle(color: NokTheme.orangeDark, fontSize: 12.5)),
               ),
             ]),
             const SizedBox(height: 6),
-            const Text('Siparis hangi adisyona yazilsin?',
+            const Text('Sipariş hangi adisyona yazılsın?',
                 style: TextStyle(color: NokTheme.ink2, fontSize: 13.5)),
             const SizedBox(height: 14),
             for (final b in data.bills)
@@ -127,8 +127,8 @@ Future<BillChoice?> pickBill(BuildContext context, String tableName, TableBills 
             ),
             const SizedBox(height: 10),
             const Text(
-                'Yeni adisyon ayni masaya acilir ve kendi etiketini alir (A, B, C...). '
-                'Her adisyon ayri yazdirilir, ayri odenir.',
+                'Yeni adisyon aynı masaya açılır ve kendi etiketini alır (A, B, C...). '
+                'Her adisyon ayrı yazdırılır, ayrı ödenir.',
                 style: TextStyle(color: NokTheme.ink3, fontSize: 12.5, height: 1.45)),
             const SizedBox(height: 6),
           ],
@@ -224,11 +224,11 @@ Future<BillChoice?> pickBillOffline(BuildContext context, String tableName, int 
             const SizedBox(height: 8),
             Text(
               single
-                  ? 'Kasaya ulasilamiyor. Bu masada bir adisyon acik gorunuyor. '
-                      'Siparisi ona ekleyebilir ya da yeni bir adisyon acabilirsiniz.'
-                  : 'Kasaya ulasilamiyor, bu masadaki $openBills adisyon simdi okunamiyor. '
-                      'Hangisine yazilacagi sorulamadigi icin siparis yeni bir adisyona yazilir. '
-                      'Mevcut bir adisyona eklemek icin baglantiyi bekleyin.',
+                  ? 'Kasaya ulaşılamıyor. Bu masada bir adisyon açık görünüyor. '
+                      'Siparişi ona ekleyebilir ya da yeni bir adisyon açabilirsiniz.'
+                  : 'Kasaya ulaşılamıyor, bu masadaki $openBills adisyon şimdi okunamıyor. '
+                      'Hangisine yazılacağı sorulamadığı için sipariş yeni bir adisyona yazılır. '
+                      'Mevcut bir adisyona eklemek için bağlantıyı bekleyin.',
               style: const TextStyle(color: NokTheme.ink2, fontSize: 13.5, height: 1.45),
             ),
             const SizedBox(height: 18),
@@ -260,7 +260,7 @@ Future<BillChoice?> pickBillOffline(BuildContext context, String tableName, int 
               alignment: Alignment.center,
               child: TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('Vazgec', style: TextStyle(color: NokTheme.ink2)),
+                child: const Text('Vazgeç', style: TextStyle(color: NokTheme.ink2)),
               ),
             ),
           ],

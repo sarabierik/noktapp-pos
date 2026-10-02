@@ -378,7 +378,17 @@ async function transporter() {
 
 async function sendViaPanel(row) {
   const url = (await licence.panelUrl()) + '/api/desktop/mail.php';
+  // db.one returns null when there is no row, and a till without an activated
+  // licence has none. Reading client_id straight off that null threw a
+  // TypeError which the queue caught and logged as "Cannot read properties of
+  // null (reading 'client_id')" - a sentence that tells the restaurant nothing
+  // while the guest's bill silently never arrives. Say what is actually wrong.
   const lic = await db.one('SELECT client_id, licence_key FROM np_licence WHERE id=1');
+  if (!lic || !lic.client_id || !lic.licence_key) {
+    throw new Error('Lisans kaydi bulunamadi, e-posta panel uzerinden '
+      + 'gonderilemiyor. Lisansi etkinlestirin ya da Ayarlar > E-posta '
+      + 'bolumunden kendi SMTP sunucunuzu tanimlayin.');
+  }
   const pdf = row.pdf_path && fs.existsSync(row.pdf_path)
     ? fs.readFileSync(row.pdf_path).toString('base64') : null;
   const res = await licence.post(url, {

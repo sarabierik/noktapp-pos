@@ -87,7 +87,7 @@ class _TablesScreenState extends State<TablesScreen> {
       final flushed = await OfflineQueue.flush();
       if (flushed.sent > 0 && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${flushed.sent} bekleyen siparis kasaya iletildi'),
+          SnackBar(content: Text('${flushed.sent} bekleyen sipariş kasaya iletildi'),
               backgroundColor: NokTheme.ok));
       }
       final res = await Api.instance.call('GET', '/api/mobile/bootstrap');
@@ -111,7 +111,7 @@ class _TablesScreenState extends State<TablesScreen> {
       }
       if (mounted) setState(() { error = e.message; loading = false; });
     } catch (e) {
-      if (mounted) setState(() { error = 'Kasaya ulasilamadi'; loading = false; });
+      if (mounted) setState(() { error = 'Kasaya ulaşılamadı'; loading = false; });
     }
     queued = await OfflineQueue.count();
     if (mounted) setState(() {});
@@ -303,7 +303,7 @@ class _TablesScreenState extends State<TablesScreen> {
           ? Container(
               color: const Color(0xFFFFF1E8),
               padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-              child: const Text('Restoran agi disindasiniz - istekler internet uzerinden iletiliyor.',
+              child: const Text('Restoran ağı dışındasınız — istekler internet üzerinden iletiliyor.',
                   style: TextStyle(color: NokTheme.orangeDark, fontSize: 12.5), textAlign: TextAlign.center))
           : null,
     );
@@ -391,7 +391,7 @@ class _TablesScreenState extends State<TablesScreen> {
           ),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Vazgec')),
+          TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Vazgeç')),
           FilledButton(onPressed: () => Navigator.pop(dCtx, true), child: const Text('Kaydet')),
         ],
       ),
@@ -400,7 +400,7 @@ class _TablesScreenState extends State<TablesScreen> {
     final ok = await Api.instance.setManualBase(ctrl.text);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(ok ? 'Kasa bulundu' : 'Bu adreste kasa yanit vermedi'),
+      content: Text(ok ? 'Kasa bulundu' : 'Bu adreste kasa yanıt vermedi'),
       backgroundColor: ok ? NokTheme.ok : NokTheme.orangeDark,
     ));
     if (ok) _load();
@@ -414,18 +414,18 @@ class _TablesScreenState extends State<TablesScreen> {
     final yes = await showDialog<bool>(
       context: context,
       builder: (dCtx) => AlertDialog(
-        title: const Text('Cikis yap'),
+        title: const Text('Çıkış yap'),
         content: Text(n > 0
-            ? '$n siparis henuz kasaya iletilmedi. Cikarsaniz bu siparisler '
-              'gonderilemez. Once baglantiyi bekleyin.'
-            : 'Bu telefonun kasa ile baglantisi kesilecek. Tekrar baglanmak icin '
-              'kasadaki karekodu okutmaniz gerekir.'),
+            ? '$n sipariş henüz kasaya iletilmedi. Çıkarsanız bu siparişler '
+              'gönderilemez. Önce bağlantıyı bekleyin.'
+            : 'Bu telefonun kasa ile bağlantısı kesilecek. Tekrar bağlanmak için '
+              'kasadaki karekodu okutmanız gerekir.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Vazgec')),
+          TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Vazgeç')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: NokTheme.orangeDark),
             onPressed: () => Navigator.pop(dCtx, true),
-            child: const Text('Cikis yap'),
+            child: const Text('Çıkış yap'),
           ),
         ],
       ),
@@ -438,7 +438,7 @@ class _TablesScreenState extends State<TablesScreen> {
   }
 
   Widget _plan() {
-    if (loading) return const AcilisEkrani(mesaj: 'Masalar yukleniyor');
+    if (loading) return const AcilisEkrani(mesaj: 'Masalar yükleniyor');
     if (error != null) return _errorBox();
     var list = zoneId == null ? tables : tables.where((t) => t.zoneId == zoneId).toList();
     if (arama.isNotEmpty) {
@@ -449,7 +449,7 @@ class _TablesScreenState extends State<TablesScreen> {
     }
     if (list.isEmpty) {
       return Center(
-        child: Text(arama.isEmpty ? 'Bu bolumde masa yok' : '"$arama" bulunamadi',
+        child: Text(arama.isEmpty ? 'Bu bölümde masa yok' : '"$arama" bulunamadı',
             style: const TextStyle(color: NokTheme.ink3)),
       );
     }
@@ -487,7 +487,7 @@ class _TablesScreenState extends State<TablesScreen> {
             color: Colors.white, border: Border(top: BorderSide(color: NokTheme.line))),
         padding: const EdgeInsets.fromLTRB(16, 11, 16, 11),
         child: Row(children: [
-          Text('$dolu dolu · ${list.length - dolu} bos',
+          Text('$dolu dolu · ${list.length - dolu} boş',
               style: const TextStyle(color: NokTheme.ink3, fontSize: 13)),
           const Spacer(),
           Text(NokTheme.tl(list.fold<double>(0, (a, t) => a + t.openTotal)),
@@ -505,11 +505,11 @@ class _TablesScreenState extends State<TablesScreen> {
             const SizedBox(height: 14),
             Text(error!, textAlign: TextAlign.center, style: const TextStyle(color: NokTheme.ink2)),
             const SizedBox(height: 8),
-            const Text('Aldiginiz siparisler telefonda saklanir ve baglanti gelince otomatik iletilir.',
+            const Text('Aldığınız siparişler telefonda saklanır ve bağlantı gelince otomatik iletilir.',
                 textAlign: TextAlign.center, style: TextStyle(color: NokTheme.ink3, fontSize: 13)),
             const SizedBox(height: 18),
             OutlinedButton(onPressed: () async { await Api.instance.locate(force: true); _load(); },
-                child: const Text('Kasayi tekrar ara')),
+                child: const Text('Kasayı tekrar ara')),
           ]),
         ),
       );
@@ -559,7 +559,7 @@ class _TablesScreenState extends State<TablesScreen> {
               Text('Masa etiketi · ${t.name}',
                   style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
-              const Text('Masanin uzerinde ve butun telefonlarda gorunur.',
+              const Text('Masanın üzerinde ve bütün telefonlarda görünür.',
                   style: TextStyle(color: NokTheme.ink3, fontSize: 12.5)),
               const SizedBox(height: 14),
               TextField(
@@ -568,14 +568,14 @@ class _TablesScreenState extends State<TablesScreen> {
                 textCapitalization: TextCapitalization.words,
                 maxLength: 60,
                 decoration: const InputDecoration(
-                  hintText: 'Ahmet Bey, dogum gunu, rezerve 20:30...',
+                  hintText: 'Ahmet Bey, doğum günü, rezerve 20:30...',
                   counterText: '',
                 ),
                 onSubmitted: (v) => kaydet(v),
               ),
               if (gecmis.isNotEmpty) ...[
                 const SizedBox(height: 10),
-                const Text('HIZLI ETIKET',
+                const Text('HIZLI ETİKET',
                     style: TextStyle(fontSize: 10.5, letterSpacing: .7, color: NokTheme.ink3)),
                 const SizedBox(height: 6),
                 Wrap(spacing: 7, runSpacing: 7, children: [
@@ -596,10 +596,10 @@ class _TablesScreenState extends State<TablesScreen> {
                 onChanged: kaydediliyor ? null : (v) => setSheet(() => kalici = !v),
                 activeColor: NokTheme.orange,
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Masa bosalinca sil',
+                title: const Text('Masa boşalınca sil',
                     style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                 subtitle: const Text(
-                    'Kapatirsaniz VIP, Rezerve, Sigara icilir gibi kalici etiket olur.',
+                    'Kapatırsanız VIP, Rezerve, Sigara içilir gibi kalıcı etiket olur.',
                     style: TextStyle(fontSize: 11.5, color: NokTheme.ink3)),
               ),
               const SizedBox(height: 6),
@@ -612,7 +612,7 @@ class _TablesScreenState extends State<TablesScreen> {
                 const Spacer(),
                 TextButton(
                     onPressed: kaydediliyor ? null : () => Navigator.of(sheetCtx).pop(false),
-                    child: const Text('Vazgec')),
+                    child: const Text('Vazgeç')),
                 const SizedBox(width: 8),
                 FilledButton(
                   onPressed: kaydediliyor ? null : () => kaydet(null),
@@ -706,7 +706,7 @@ class _TablesScreenState extends State<TablesScreen> {
                   ]),
                 ],
                 const SizedBox(height: 3),
-                Text(busy ? NokTheme.tl(t.openTotal) : 'bos',
+                Text(busy ? NokTheme.tl(t.openTotal) : 'boş',
                     maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                         fontSize: busy ? 12.5 : 11,

@@ -132,20 +132,20 @@ class _ScanScreenState extends State<ScanScreen> {
           left: 20, right: 20, bottom: 32,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Text(
-              'Kasadaki "Telefon bagla" ekranindaki kareyi bu cercevenin icine alin.',
+              'Kasadaki "Telefon bağla" ekranındaki kareyi bu çerçevenin içine alın.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white, fontSize: 14.5, height: 1.45),
             ),
             if (_foreign != null) _not(
-              'Bu karekod NOKTApp\'a ait degil:',
+              'Bu karekod NOKTApp\'a ait değil:',
               _foreign!,
-              'Kasada Ayarlar > Cihazlar > Telefon bagla ekranindaki kareyi okutun.',
+              'Kasada Ayarlar > Cihazlar > Telefon bağla ekranındaki kareyi okutun.',
             ),
             if (_slow) _not(
-              'Kamera calisiyor ama hicbir karekod cozulemiyor.',
+              'Kamera çalışıyor ama hiçbir karekod çözülemiyor.',
               null,
-              'Isigi acin ve 15-20 cm yaklasin. Yine olmazsa geri donup alti haneli '
-              'kodu elle yazin - bu telefonun karekod motoru calismiyor olabilir.',
+              'Işığı açın ve 15-20 cm yaklaşın. Yine olmazsa geri dönüp altı haneli '
+              'kodu elle yazın — bu telefonun karekod motoru çalışmıyor olabilir.',
             ),
           ]),
         ),
@@ -193,9 +193,9 @@ class _ScanScreenState extends State<ScanScreen> {
           const SizedBox(height: 16),
           Text(
             denied
-                ? 'Kamera izni verilmedi. Telefon ayarlarindan NOKTApp Garson icin kamerayi acin, '
-                    'ya da geri donup alti haneli kodu elle yazin.'
-                : 'Bu telefonun kamerasi kullanilamiyor. Geri donup alti haneli kodu elle yazabilirsiniz.',
+                ? 'Kamera izni verilmedi. Telefon ayarlarından NOKTApp Garson için kamerayı açın, '
+                    'ya da geri dönüp altı haneli kodu elle yazın.'
+                : 'Bu telefonun kamerası kullanılamıyor. Geri dönüp altı haneli kodu elle yazabilirsiniz.',
             textAlign: TextAlign.center,
             style: const TextStyle(color: Colors.white, height: 1.5),
           ),

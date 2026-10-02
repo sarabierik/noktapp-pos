@@ -82,7 +82,7 @@ class _AcilisState extends State<_Acilis> {
 class AcilisEkrani extends StatelessWidget {
   const AcilisEkrani({super.key, this.mesaj});
 
-  /// "Masalar yukleniyor", "Kasa araniyor" - said out loud, because a waiter
+  /// "Masalar yükleniyor", "Kasa araniyor" - said out loud, because a waiter
   /// standing in front of a spinner with no words assumes it has hung.
   final String? mesaj;
 

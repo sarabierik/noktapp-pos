@@ -131,11 +131,11 @@ class OpenBill {
     if (t == null) return '';
     final m = DateTime.now().difference(t).inMinutes;
     // a phone whose clock runs ahead of the till would otherwise print "-3 dk"
-    if (m < 1) return 'az once acildi';
-    if (m < 60) return '$m dk once acildi';
+    if (m < 1) return 'az önce açıldı';
+    if (m < 60) return '$m dk önce açıldı';
     final h = m ~/ 60;
     final rest = m % 60;
-    return rest == 0 ? '$h saat once acildi' : '$h saat $rest dk once acildi';
+    return rest == 0 ? '$h saat önce açıldı' : '$h saat $rest dk önce açıldı';
   }
 }
 
